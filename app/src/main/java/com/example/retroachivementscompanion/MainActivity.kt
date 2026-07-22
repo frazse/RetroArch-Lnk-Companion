@@ -97,17 +97,21 @@ class MainActivity : AppCompatActivity() {
         .achievement-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
         .points { font-size: 11px; color: #FFD600; font-weight: 800; }
         .step-progress { font-size: 11px; color: #00BFA5; font-weight: bold; }
-        .challenge-label { position: absolute; top: 0; right: 0; background: #FFD600; color: #000; font-size: 9px; font-weight: 900; padding: 1px 6px; border-bottom-left-radius: 6px; }
+        .badge-pill { position: absolute; top: 0; right: 0; font-size: 9px; font-weight: 900; padding: 1px 8px; border-bottom-left-radius: 6px; text-transform: uppercase; z-index: 2; color: #000; }
+        .badge-missable { background: #FF5252; color: #FFF; }
+        .badge-progression { background: #00BFA5; }
+        .badge-win { background: #FFD600; }
+        .badge-challenge { border: 1px solid #FFD600; background: rgba(255, 214, 0, 0.2); color: #FFD600; }
         </style><script>
         function formatTemp(t) { return t > 0 ? (t/1000).toFixed(1) + '°' : '--'; }
         function update(data) {
           if(!data) return;
           if(data.game_title) document.getElementById('game-title').innerText = data.game_title;
           if(data.fps !== undefined) document.getElementById('fps').innerText = Math.round(data.fps);
-          if(data.frametime !== undefined) document.getElementById('frametime').innerText = data.frametime.toFixed(1) + 'ms';
+          if(data.frametime !== undefined) document.getElementById('frametime').innerText = data.frametime ? data.frametime.toFixed(1) + 'ms' : '--';
           if(data.cpu_util !== undefined) document.getElementById('cpu_util').innerText = Math.round(data.cpu_util) + '%';
           if(data.gpu_util !== undefined) document.getElementById('gpu_util').innerText = Math.round(data.gpu_util) + '%';
-          if(data.power_w !== undefined) document.getElementById('power_w').innerText = data.power_w.toFixed(1) + 'W';
+          if(data.power_w !== undefined) document.getElementById('power_w').innerText = data.power_w ? data.power_w.toFixed(1) + 'W' : '--';
           if(data.temp_cpu !== undefined) document.getElementById('temp_cpu').innerText = formatTemp(data.temp_cpu);
           if(data.temp_gpu !== undefined) document.getElementById('temp_gpu').innerText = formatTemp(data.temp_gpu);
           if(data.battery !== undefined) document.getElementById('battery').innerText = data.battery + '%';
@@ -120,7 +124,12 @@ class MainActivity : AppCompatActivity() {
             let html = ''; data.achievements.forEach(a => {
               const statusClass = a.unlocked ? 'unlocked' : (a.is_challenge ? 'challenge' : 'locked');
               const fillWidth = a.unlocked ? 100 : (a.progress_percent || 0);
-              html += '<div class="achievement ' + statusClass + '">' + (a.is_challenge ? '<div class="challenge-label">Active</div>' : '') +
+              let typeBadge = '';
+              if (a.is_challenge) typeBadge = '<div class="badge-pill badge-challenge">Active</div>';
+              else if (a.type === 1) typeBadge = '<div class="badge-pill badge-missable">Missable</div>';
+              else if (a.type === 2) typeBadge = '<div class="badge-pill badge-progression">Progression</div>';
+              else if (a.type === 3) typeBadge = '<div class="badge-pill badge-win">Win</div>';
+              html += '<div class="achievement ' + statusClass + '\">' + typeBadge +
                       '<div class="achievement-fill" style="width:' + fillWidth + '%"></div>' + '<img class="icon" src="' + (a.unlocked ? a.badge_url : a.badge_locked_url) + '">' +
                       '<div class="info"><p class="title">' + a.title + '</p><p class="desc">' + a.description + '</p><div class="achievement-footer">' +
                       '<span class="points">🪙 ' + a.points + '</span>' + (a.progress_text ? '<span class="step-progress">' + a.progress_text + '</span>' : '') + '</div></div></div>';
