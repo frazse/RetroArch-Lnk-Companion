@@ -124,15 +124,21 @@ class MainActivity : AppCompatActivity() {
             let html = ''; data.achievements.forEach(a => {
               const statusClass = a.unlocked ? 'unlocked' : (a.is_challenge ? 'challenge' : 'locked');
               const fillWidth = a.unlocked ? 100 : (a.progress_percent || 0);
+              
+              // Ensure we show progress text if it exists, even if it's just a number
+              const rawProgress = a.progress_text !== undefined ? a.progress_text.toString() : '';
+              const hasProgress = rawProgress.trim() !== '';
+              
               let typeBadge = '';
-              if (a.is_challenge) typeBadge = '<div class="badge-pill badge-challenge">Active</div>';
+              if (a.is_challenge) typeBadge = '<div class="badge-pill badge-challenge">Active Challenge</div>';
               else if (a.type === 1) typeBadge = '<div class="badge-pill badge-missable">Missable</div>';
               else if (a.type === 2) typeBadge = '<div class="badge-pill badge-progression">Progression</div>';
-              else if (a.type === 3) typeBadge = '<div class="badge-pill badge-win">Win</div>';
+              else if (a.type === 3) typeBadge = '<div class="badge-pill badge-win">Win Condition</div>';
+              
               html += '<div class="achievement ' + statusClass + '\">' + typeBadge +
                       '<div class="achievement-fill" style="width:' + fillWidth + '%"></div>' + '<img class="icon" src="' + (a.unlocked ? a.badge_url : a.badge_locked_url) + '">' +
                       '<div class="info"><p class="title">' + a.title + '</p><p class="desc">' + a.description + '</p><div class="achievement-footer">' +
-                      '<span class="points">🪙 ' + a.points + '</span>' + (a.progress_text ? '<span class="step-progress">' + a.progress_text + '</span>' : '') + '</div></div></div>';
+                      '<span class="points">🪙 ' + a.points + ' Points</span>' + (hasProgress ? '<span class="step-progress">' + rawProgress + '</span>' : '') + '</div></div></div>';
             }); list.innerHTML = html;
           }
         } setInterval(() => { const now = new Date(); document.getElementById('clock').innerText = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0'); }, 1000);
