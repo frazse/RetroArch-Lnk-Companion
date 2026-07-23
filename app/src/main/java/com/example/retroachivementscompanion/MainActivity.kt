@@ -12,7 +12,7 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 
 class MainActivity : AppCompatActivity() {
-    private lateinit var webView: WebView
+    private var webView: WebView? = null
     private var running = true
     private var socket: DatagramSocket? = null
 
@@ -22,11 +22,12 @@ class MainActivity : AppCompatActivity() {
         // Passive HUD Mode: Prevent focus and interaction from controllers/keys
         window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
         
-        webView = WebView(this)
-        setContentView(webView)
-        webView.settings.javaScriptEnabled = true
-        webView.setBackgroundColor(Color.BLACK)
-        webView.loadDataWithBaseURL("https://retroarch.dual", DASHBOARD_HTML, "text/html", "UTF-8", null)
+        val wv = WebView(this)
+        webView = wv
+        setContentView(wv)
+        wv.settings.javaScriptEnabled = true
+        wv.setBackgroundColor(Color.BLACK)
+        wv.loadDataWithBaseURL("https://retroarch.dual", DASHBOARD_HTML, "text/html", "UTF-8", null)
         startUdpListener()
     }
 
@@ -41,9 +42,14 @@ class MainActivity : AppCompatActivity() {
                     val packet = DatagramPacket(buffer, buffer.size)
                     s.receive(packet)
                     val json = String(packet.data, 0, packet.length)
-                    Log.d("RetroArchLnk", "Received JSON: $json")
-                    runOnUiThread {
-                        webView.evaluateJavascript("update($json);", null)
+                    
+                    // Safety check: only update if still running and activity not destroyed
+                    if (running) {
+                        runOnUiThread {
+                            if (running && !isFinishing && !isDestroyed) {
+                                webView?.evaluateJavascript("update($json);", null)
+                            }
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -66,6 +72,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         running = false
         socket?.close()
+        webView = null
         super.onDestroy()
     }
 
@@ -103,45 +110,107 @@ class MainActivity : AppCompatActivity() {
         .badge-win { background: #FFD600; }
         .badge-challenge { border: 1px solid #FFD600; background: rgba(255, 214, 0, 0.2); color: #FFD600; }
         </style><script>
-        function formatTemp(t) { return t > 0 ? (t/1000).toFixed(1) + '°' : '--'; }
-        function update(data) {
-          if(!data) return;
-          if(data.game_title) document.getElementById('game-title').innerText = data.game_title;
-          if(data.fps !== undefined) document.getElementById('fps').innerText = Math.round(data.fps);
-          if(data.frametime !== undefined) document.getElementById('frametime').innerText = data.frametime ? data.frametime.toFixed(1) + 'ms' : '--';
-          if(data.cpu_util !== undefined) document.getElementById('cpu_util').innerText = Math.round(data.cpu_util) + '%';
-          if(data.gpu_util !== undefined) document.getElementById('gpu_util').innerText = Math.round(data.gpu_util) + '%';
-          if(data.power_w !== undefined) document.getElementById('power_w').innerText = data.power_w ? data.power_w.toFixed(1) + 'W' : '--';
-          if(data.temp_cpu !== undefined) document.getElementById('temp_cpu').innerText = formatTemp(data.temp_cpu);
-          if(data.temp_gpu !== undefined) document.getElementById('temp_gpu').innerText = formatTemp(data.temp_gpu);
-          if(data.battery !== undefined) document.getElementById('battery').innerText = data.battery + '%';
-          if (data.achievements) {
-            const total = data.achievements.length; const unlocked = data.achievements.filter(a => a.unlocked).length;
-            const percent = total > 0 ? Math.round((unlocked / total) * 100) : 0;
-            document.getElementById('progress-text').innerText = unlocked + ' / ' + total + ' (' + percent + '%)';
-            document.getElementById('progress-fill').style.width = percent + '%';
-            const list = document.getElementById('achievement-list');
-            let html = ''; data.achievements.forEach(a => {
-              const statusClass = a.unlocked ? 'unlocked' : (a.is_challenge ? 'challenge' : 'locked');
-              const fillWidth = a.unlocked ? 100 : (a.progress_percent || 0);
-              
-              // Ensure we show progress text if it exists, even if it's just a number
-              const rawProgress = a.progress_text !== undefined ? a.progress_text.toString() : '';
-              const hasProgress = rawProgress.trim() !== '';
-              
-              let typeBadge = '';
-              if (a.is_challenge) typeBadge = '<div class="badge-pill badge-challenge">Active Challenge</div>';
-              else if (a.type === 1) typeBadge = '<div class="badge-pill badge-missable">Missable</div>';
-              else if (a.type === 2) typeBadge = '<div class="badge-pill badge-progression">Progression</div>';
-              else if (a.type === 3) typeBadge = '<div class="badge-pill badge-win">Win Condition</div>';
-              
-              html += '<div class="achievement ' + statusClass + '\">' + typeBadge +
-                      '<div class="achievement-fill" style="width:' + fillWidth + '%"></div>' + '<img class="icon" src="' + (a.unlocked ? a.badge_url : a.badge_locked_url) + '">' +
-                      '<div class="info"><p class="title">' + a.title + '</p><p class="desc">' + a.description + '</p><div class="achievement-footer">' +
-                      '<span class="points">🪙 ' + a.points + ' Points</span>' + (hasProgress ? '<span class="step-progress">' + rawProgress + '</span>' : '') + '</div></div></div>';
-            }); list.innerHTML = html;
+        function getInitialState() {
+          return {
+            game_title: 'RetroArch Lnk',
+            fps: '--',
+            frametime: '--ms',
+            cpu_util: '--%',
+            gpu_util: '--%',
+            power_w: '--W',
+            temp_cpu: '--°',
+            temp_gpu: '--°',
+            battery: '--%',
+            achievements: []
+          };
+        }
+
+        let state = getInitialState();
+
+        function formatTemp(t) { return t > 0 ? (t/1000).toFixed(1) + '°' : '--°'; }
+
+        function update(newData) {
+          if(!newData) return;
+
+          // If game title changes and it's not empty, reset state but preserve title
+          if (newData.game_title && newData.game_title !== state.game_title) {
+            const title = newData.game_title;
+            state = getInitialState();
+            state.game_title = title;
           }
-        } setInterval(() => { const now = new Date(); document.getElementById('clock').innerText = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0'); }, 1000);
+
+          // Update telemetry only if provided in this packet
+          const batteryVal = newData.battery ?? newData.batt_percent ?? newData.battery_percent;
+          
+          if(newData.fps !== undefined) state.fps = Math.round(newData.fps);
+          if(newData.frametime !== undefined) state.frametime = newData.frametime.toFixed(1) + 'ms';
+          if(newData.cpu_util !== undefined) state.cpu_util = Math.round(newData.cpu_util) + '%';
+          if(newData.gpu_util !== undefined) state.gpu_util = Math.round(newData.gpu_util) + '%';
+          if(newData.power_w !== undefined) state.power_w = newData.power_w.toFixed(1) + 'W';
+          if(newData.temp_cpu !== undefined) state.temp_cpu = formatTemp(newData.temp_cpu);
+          if(newData.temp_gpu !== undefined) state.temp_gpu = formatTemp(newData.temp_gpu);
+          if(batteryVal !== undefined) state.battery = batteryVal + '%';
+
+          // Merge achievements
+          if (newData.achievements) {
+            newData.achievements.forEach(newA => {
+              const idx = state.achievements.findIndex(a => a.title === newA.title);
+              if (idx !== -1) {
+                state.achievements[idx] = { ...state.achievements[idx], ...newA };
+              } else {
+                state.achievements.push(newA);
+              }
+            });
+          }
+
+          render();
+        }
+
+        function render() {
+          document.getElementById('game-title').innerText = state.game_title;
+          document.getElementById('fps').innerText = state.fps;
+          document.getElementById('frametime').innerText = state.frametime;
+          document.getElementById('cpu_util').innerText = state.cpu_util;
+          document.getElementById('gpu_util').innerText = state.gpu_util;
+          document.getElementById('power_w').innerText = state.power_w;
+          document.getElementById('temp_cpu').innerText = state.temp_cpu;
+          document.getElementById('temp_gpu').innerText = state.temp_gpu;
+          document.getElementById('battery').innerText = state.battery;
+
+          const total = state.achievements.length;
+          const unlocked = state.achievements.filter(a => a.unlocked).length;
+          const percent = total > 0 ? Math.round((unlocked / total) * 100) : 0;
+          document.getElementById('progress-text').innerText = unlocked + ' / ' + total + ' (' + percent + '%)';
+          document.getElementById('progress-fill').style.width = percent + '%';
+
+          const list = document.getElementById('achievement-list');
+          let html = '';
+          state.achievements.forEach(a => {
+            const statusClass = a.unlocked ? 'unlocked' : (a.is_challenge ? 'challenge' : 'locked');
+            const fillWidth = a.unlocked ? 100 : (a.progress_percent || 0);
+            const progressDisplay = (a.progress_text && a.progress_text.toString().trim() !== '') ? a.progress_text : '';
+            
+            let typeBadge = '';
+            if (a.is_challenge) typeBadge = '<div class="badge-pill badge-challenge">Active Challenge</div>';
+            else if (a.type === 1) typeBadge = '<div class="badge-pill badge-missable">Missable</div>';
+            else if (a.type === 2) typeBadge = '<div class="badge-pill badge-progression">Progression</div>';
+            else if (a.type === 3) typeBadge = '<div class="badge-pill badge-win">Win Condition</div>';
+
+            html += '<div class="achievement ' + statusClass + '\">' + typeBadge +
+                    '<div class="achievement-fill" style="width:' + fillWidth + '%"></div>' + 
+                    '<img class="icon" src="' + (a.unlocked ? a.badge_url : a.badge_locked_url) + '">' +
+                    '<div class="info"><p class="title">' + a.title + '</p><p class="desc">' + a.description + '</p><div class="achievement-footer">' +
+                    '<span class="points">🪙 ' + a.points + ' Points</span>' + 
+                    (progressDisplay ? '<span class="step-progress">' + progressDisplay + '</span>' : '') + 
+                    '</div></div></div>';
+          });
+          list.innerHTML = html;
+        }
+
+        setInterval(() => {
+          const now = new Date();
+          document.getElementById('clock').innerText = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+        }, 1000);
         </script></head><body>
         <div class='dashboard'><p class='game-title' id='game-title'>Waiting...</p>
         <div class='telemetry-grid'>
