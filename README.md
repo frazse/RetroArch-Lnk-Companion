@@ -2,6 +2,12 @@
 
 A lightweight Android dashboard for RetroArch that displays live telemetry and achievements in a non-intrusive "Passive HUD" mode.
 
+## Compatibility
+
+This companion app is designed to work specifically with these forks:
+- [dolphin-lnk](https://github.com/frazse/dolphin-lnk)
+- [retroarch-lnk](https://github.com/frazse/retroarch-lnk)
+
 ## Features
 
 - **Live Telemetry**: Real-time display of FPS, Frametime, CPU/GPU utilization, and Battery status.
