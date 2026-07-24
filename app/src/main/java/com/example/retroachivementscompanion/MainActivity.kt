@@ -139,7 +139,7 @@ class MainActivity : AppCompatActivity() {
             battery: '--%',
             achievements: [],
             activeSubsets: {},
-            showHeaders: false // Default to hidden
+            showHeaders: false
           };
         }
 
@@ -155,15 +155,20 @@ class MainActivity : AppCompatActivity() {
             const prevHeaders = state.showHeaders;
             state = getInitialState();
             state.game_title = title;
-            state.showHeaders = prevHeaders; // Keep header toggle preference
+            state.showHeaders = prevHeaders;
           }
 
+          // Handle alternative telemetry keys (PPSSPP uses 'cpu', 'gpu', 'power', etc.)
+          const cpuVal = newData.cpu_util ?? newData.cpu_percent ?? newData.cpu;
+          const gpuVal = newData.gpu_util ?? newData.gpu_percent ?? newData.gpu;
           const batteryVal = newData.battery ?? newData.batt_percent ?? newData.battery_percent;
+          const powerVal = newData.power_w ?? newData.power;
+          
           if(newData.fps !== undefined) state.fps = Math.round(newData.fps);
           if(newData.frametime !== undefined) state.frametime = newData.frametime.toFixed(1) + 'ms';
-          if(newData.cpu_util !== undefined) state.cpu_util = Math.round(newData.cpu_util) + '%';
-          if(newData.gpu_util !== undefined) state.gpu_util = Math.round(newData.gpu_util) + '%';
-          if(newData.power_w !== undefined) state.power_w = newData.power_w.toFixed(1) + 'W';
+          if(cpuVal !== undefined) state.cpu_util = Math.round(cpuVal) + '%';
+          if(gpuVal !== undefined) state.gpu_util = Math.round(gpuVal) + '%';
+          if(powerVal !== undefined) state.power_w = powerVal.toFixed(1) + 'W';
           if(newData.temp_cpu !== undefined) state.temp_cpu = formatTemp(newData.temp_cpu);
           if(newData.temp_gpu !== undefined) state.temp_gpu = formatTemp(newData.temp_gpu);
           if(batteryVal !== undefined) state.battery = batteryVal + '%';
@@ -174,9 +179,6 @@ class MainActivity : AppCompatActivity() {
               const sTitle = newA.subset_title || '';
               
               if (state.activeSubsets[sId] === undefined) {
-                // DEFAULT LOGIC:
-                // 1. Enable Base Set (ID 0)
-                // 2. Enable any subset that matches the game title
                 const isBase = (sId === 0);
                 const matchesGame = (sTitle.trim() === state.game_title.trim());
                 state.activeSubsets[sId] = isBase || matchesGame;
@@ -222,14 +224,12 @@ class MainActivity : AppCompatActivity() {
 
           let html = '';
           
-          // Header Toggle
           html += '<div class="filter-item" onclick="toggleHeaders()">' +
                   '<input type="checkbox" ' + (state.showHeaders ? 'checked' : '') + ' onclick="event.stopPropagation(); toggleHeaders()">' +
                   '<span>Show Subset Headers</span></div>';
           
           html += '<div class="modal-divider"></div>';
 
-          // Subset Toggles
           Object.keys(subsetsMap).sort((a,b) => a-b).forEach(id => {
             const active = state.activeSubsets[id];
             const title = subsetsMap[id];
