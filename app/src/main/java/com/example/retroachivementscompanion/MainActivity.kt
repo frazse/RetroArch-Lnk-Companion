@@ -104,18 +104,19 @@ class MainActivity : AppCompatActivity() {
         .content { flex-grow: 1; overflow-y: auto; padding: 18px; box-sizing: border-box; }
         
         .subset-header { font-size: 13px; font-weight: 900; color: #00BFA5; text-transform: uppercase; margin: 15px 0 8px 0; padding-bottom: 4px; border-bottom: 1px solid #2A2E45; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center; }
+        .subset-header.completed { color: #888; border-bottom-color: #1E2132; margin-top: 25px; }
         .subset-count { font-size: 10px; color: #888; }
         
         .achievement { display: flex; align-items: center; margin-bottom: 12px; padding: 12px; background: #1E2132; border-radius: 10px; border: 1px solid #2A2E45; position: relative; overflow: hidden; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-        .achievement.unlocked { border-left: 4px solid #4CAF50; background: #242938; }
+        .achievement.unlocked { border-left: 4px solid #4CAF50; background: #242938; opacity: 0.6; }
         .achievement.challenge { border: 2px solid #FFD600; background: #2A2410; }
         
-        /* New Unlock Animation */
         .achievement.just-unlocked { 
           border: 2px solid #4CAF50; 
           box-shadow: 0 0 20px rgba(76, 175, 80, 0.6); 
           animation: pulse-glow 2s infinite;
           transform: scale(1.02);
+          opacity: 1 !important;
         }
         @keyframes pulse-glow {
           0% { box-shadow: 0 0 10px rgba(76, 175, 80, 0.4); }
@@ -169,7 +170,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         let state = getInitialState();
-        let nextIndex = 0;
+        let nextGlobalIndex = 0;
 
         function formatTemp(t) { return t > 0 ? (t/1000).toFixed(1) + '°' : '--°'; }
         
@@ -192,7 +193,7 @@ class MainActivity : AppCompatActivity() {
             state.game_title = title;
             state.showHeaders = prevHeaders;
             state.hideUnlocked = prevHideUnlocked;
-            nextIndex = 0;
+            nextGlobalIndex = 0;
           }
 
           const batteryVal = newData.battery ?? newData.batt_percent ?? newData.battery_percent;
@@ -230,9 +231,11 @@ class MainActivity : AppCompatActivity() {
                     render();
                   }, 10000);
                 }
-                state.achievements[idx] = { ...oldA, ...newA };
+                // Preserve originalIndex even on update
+                const preservedIndex = oldA.originalIndex;
+                state.achievements[idx] = { ...oldA, ...newA, originalIndex: preservedIndex };
               } else {
-                newA.originalIndex = nextIndex++;
+                newA.originalIndex = nextGlobalIndex++;
                 state.achievements.push(newA);
               }
             });
@@ -274,15 +277,12 @@ class MainActivity : AppCompatActivity() {
           });
 
           let html = '';
-          
           html += '<div class="filter-item" onclick="toggleHeaders()">' +
                   '<input type="checkbox" ' + (state.showHeaders ? 'checked' : '') + ' onclick="event.stopPropagation(); toggleHeaders()">' +
                   '<span>Show Subset Headers</span></div>';
-                  
           html += '<div class="filter-item" onclick="toggleHideUnlocked()">' +
                   '<input type="checkbox" ' + (state.hideUnlocked ? 'checked' : '') + ' onclick="event.stopPropagation(); toggleHideUnlocked()">' +
                   '<span>Hide Unlocked</span></div>';
-          
           html += '<div class="modal-divider"></div>';
 
           Object.keys(subsetsMap).sort((a,b) => a-b).forEach(id => {
@@ -326,55 +326,68 @@ class MainActivity : AppCompatActivity() {
           document.getElementById('temp_cpu').innerText = state.temp_cpu;
           document.getElementById('temp_gpu').innerText = state.temp_gpu;
           document.getElementById('battery').innerText = state.battery;
-          
           document.getElementById('session-timer').innerText = formatDuration(Date.now() - state.startTime);
 
           const visibleBySubset = state.achievements.filter(a => state.activeSubsets[a.subset_id || 0]);
-          const finalVisible = state.hideUnlocked ? visibleBySubset.filter(a => !a.unlocked || state.recentUnlocks[a.title]) : visibleBySubset;
           
-          const total = visibleBySubset.length;
-          const unlocked = visibleBySubset.filter(a => a.unlocked).length;
-          const percent = total > 0 ? Math.round((unlocked / total) * 100) : 0;
-          document.getElementById('progress-text').innerText = unlocked + ' / ' + total + ' (' + percent + '%)';
-          document.getElementById('progress-fill').style.width = percent + '%';
+          const totalCount = visibleBySubset.length;
+          const unlockedCount = visibleBySubset.filter(a => a.unlocked).length;
+          const totalPercent = totalCount > 0 ? Math.round((unlockedCount / totalCount) * 100) : 0;
+          document.getElementById('progress-text').innerText = unlockedCount + ' / ' + totalCount + ' (' + totalPercent + '%)';
+          document.getElementById('progress-fill').style.width = totalPercent + '%';
 
-          const pinnedList = finalVisible.filter(a => a.is_challenge || state.recentUnlocks[a.title]);
-          const regularList = finalVisible.filter(a => !a.is_challenge && !state.recentUnlocks[a.title]);
+          // PARTITIONING LOGIC (Global partitions)
+          const pinnedList = visibleBySubset.filter(a => a.is_challenge || state.recentUnlocks[a.title]);
+          const remaining = visibleBySubset.filter(a => !a.is_challenge && !state.recentUnlocks[a.title]);
+          
+          const lockedRegular = remaining.filter(a => !a.unlocked);
+          const unlockedRegular = remaining.filter(a => a.unlocked);
 
-          pinnedList.sort((a,b) => a.originalIndex - b.originalIndex);
-          regularList.sort((a,b) => a.originalIndex - b.originalIndex);
+          const sortFn = (a, b) => a.originalIndex - b.originalIndex;
+          pinnedList.sort(sortFn);
+          lockedRegular.sort(sortFn);
+          unlockedRegular.sort(sortFn);
 
+          // 1. Render Pinned
           document.getElementById('pinned-achievements').innerHTML = pinnedList.map(a => getAchievementHtml(a)).join('');
 
+          // 2. Render Main List (Locked items grouped by subset)
           const list = document.getElementById('achievement-list');
           let html = '';
           const subsetsMap = {};
-          regularList.forEach(a => {
-            const title = a.subset_title || 'Base Set';
+          lockedRegular.forEach(a => {
             const id = a.subset_id || 0;
-            if (!subsetsMap[id]) subsetsMap[id] = { title: title, items: [] };
+            if (!subsetsMap[id]) subsetsMap[id] = { title: a.subset_title || 'Base Set', items: [] };
             subsetsMap[id].items.push(a);
           });
 
-          const sortedIds = Object.keys(subsetsMap).sort((a, b) => a - b);
-          sortedIds.forEach(id => {
+          Object.keys(subsetsMap).sort((a,b) => a-b).forEach(id => {
             const subset = subsetsMap[id];
             if (state.showHeaders) {
-              const unlockedCount = subset.items.filter(i => i.unlocked).length;
+              const subUnlocked = subset.items.filter(i => i.unlocked).length;
               html += '<div class="subset-header">' +
                       '<span>' + subset.title + '</span>' +
-                      '<span class="subset-count">' + unlockedCount + ' / ' + subset.items.length + '</span>' +
+                      '<span class="subset-count">' + subUnlocked + ' / ' + subset.items.length + '</span>' +
                       '</div>';
             }
             html += subset.items.map(a => getAchievementHtml(a)).join('');
           });
+          
+          // 3. Render Unlocked Items at the very bottom (Flat list to keep relative Display Order)
+          if (!state.hideUnlocked && unlockedRegular.length > 0) {
+            if (state.showHeaders) {
+              html += '<div class="subset-header completed"><span>Completed Achievements</span></div>';
+            }
+            html += unlockedRegular.map(a => getAchievementHtml(a)).join('');
+          }
+
           list.innerHTML = html;
         }
 
         setInterval(() => {
           const now = new Date();
           document.getElementById('clock').innerText = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
-          render(); // Refresh timer
+          render();
         }, 1000);
         </script></head><body>
         <div id="modal-overlay" onclick="toggleSettings(false)">
