@@ -86,7 +86,7 @@ class MainActivity : AppCompatActivity() {
         .telemetry-grid { display: flex; flex-direction: column; flex: 1; justify-content: center; width: 100%; }
         .telemetry-row { display: flex; justify-content: space-evenly; width: 100%; }
         .column { display: flex; flex-direction: column; align-items: center; width: 25%; }
-        .val-text { font-size: 18px; font-weight: bold; color: #FFF; line-height: 1.0; margin-bottom: 2px; }
+        .val-text { font-size: 18px; font-weight: bold; color: #FFF; line-height: 1.0; margin-bottom: 2px; transition: none !important; }
         .label { font-size: 10px; color: #888; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; width: 25%; text-align: center; margin-top: 2px; }
         .anchored-row { position: relative; width: 100%; height: 20px; display: flex; align-items: center; }
         .game-progress { position: absolute; left: 10px; font-size: 12px; color: #888; font-weight: 900; }
@@ -107,7 +107,7 @@ class MainActivity : AppCompatActivity() {
         .subset-header.completed { color: #888; border-bottom-color: #1E2132; margin-top: 25px; }
         .subset-count { font-size: 10px; color: #888; }
         
-        .achievement { display: flex; align-items: center; margin-bottom: 12px; padding: 12px; background: #1E2132; border-radius: 10px; border: 1px solid #2A2E45; position: relative; overflow: hidden; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .achievement { display: flex; align-items: center; margin-bottom: 12px; padding: 12px; background: #1E2132; border-radius: 10px; border: 1px solid #2A2E45; position: relative; overflow: hidden; transition: border-color 0.3s, opacity 0.3s, transform 0.3s, box-shadow 0.3s; }
         .achievement.unlocked { border-left: 4px solid #4CAF50; background: #242938; opacity: 0.6; }
         .achievement.challenge { border: 2px solid #FFD600; background: #2A2410; }
         
