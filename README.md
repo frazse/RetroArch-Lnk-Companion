@@ -7,6 +7,7 @@ A lightweight Android dashboard for RetroArch that displays live telemetry and a
 This companion app is designed to work specifically with these forks:
 - [dolphin-lnk](https://github.com/frazse/dolphin-lnk)
 - [retroarch-lnk](https://github.com/frazse/retroarch-lnk)
+- [ppsspp-lnk](https://github.com/frazse/ppsspp-lnk)
 
 ## Features
 
