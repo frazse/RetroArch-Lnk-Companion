@@ -6,6 +6,7 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
+import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.appcompat.app.AppCompatActivity
 import java.net.DatagramPacket
@@ -18,25 +19,35 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // Passive HUD Mode: Prevent focus and interaction from controllers/keys
-        window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
-        // Keep Screen On while app is active
+        setPassiveMode(true)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        
         val wv = WebView(this)
         webView = wv
         setContentView(wv)
         wv.settings.javaScriptEnabled = true
+        wv.settings.domStorageEnabled = true
+        wv.settings.databaseEnabled = true
         wv.setBackgroundColor(Color.BLACK)
+        wv.addJavascriptInterface(WebAppInterface(), "Android")
         wv.loadDataWithBaseURL("https://retroarch.dual", DASHBOARD_HTML, "text/html", "UTF-8", null)
         startUdpListener()
+    }
+
+    private fun setPassiveMode(passive: Boolean) {
+        runOnUiThread {
+            if (passive) window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+            else window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+        }
+    }
+
+    inner class WebAppInterface {
+        @JavascriptInterface
+        fun setFocusable(focusable: Boolean) { setPassiveMode(!focusable) }
     }
 
     private fun startUdpListener() {
         Thread {
             try {
-                Log.d("RetroArchLnk", "Starting UDP listener on port 55432")
                 val s = DatagramSocket(55432)
                 socket = s
                 val buffer = ByteArray(65535)
@@ -44,36 +55,24 @@ class MainActivity : AppCompatActivity() {
                     val packet = DatagramPacket(buffer, buffer.size)
                     s.receive(packet)
                     val json = String(packet.data, 0, packet.length)
-                    Log.d("RetroArchLnk", "Received JSON: $json")
-                    runOnUiThread {
-                        if (running && !isFinishing && !isDestroyed) {
-                            webView?.evaluateJavascript("update($json);", null)
-                        }
-                    }
+                    runOnUiThread { if (running && !isFinishing && !isDestroyed) webView?.evaluateJavascript("update($json);", null) }
                 }
-            } catch (e: Exception) {
-                if (running) {
-                    Log.e("RetroArchLnk", "Socket error", e)
-                }
-            } finally {
-                socket?.close()
-                socket = null
-            }
+            } catch (e: Exception) { if (running) Log.e("RetroArchLnk", "Socket error", e) }
+            finally { socket?.close(); socket = null }
         }.start()
     }
 
-    // Consume all key events (buttons) to prevent controller interaction
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean = true
-
-    // Consume all generic motion events (analog sticks)
-    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean = true
-
-    override fun onDestroy() {
-        running = false
-        socket?.close()
-        webView = null
-        super.onDestroy()
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val isPassive = (window.attributes.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0
+        return if (isPassive) true else super.dispatchKeyEvent(event)
     }
+
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        val isPassive = (window.attributes.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0
+        return if (isPassive) true else super.dispatchGenericMotionEvent(event)
+    }
+
+    override fun onDestroy() { running = false; socket?.close(); webView = null; super.onDestroy() }
 
     companion object {
         private val DASHBOARD_HTML = """<html><head><style>
@@ -82,7 +81,6 @@ class MainActivity : AppCompatActivity() {
         .game-title { font-size: 19px; font-weight: 800; color: #00BFA5; margin: 0 0 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; text-align: center; }
         .settings-btn { position: absolute; top: 10px; right: 10px; color: #888; cursor: pointer; z-index: 110; padding: 5px; background: rgba(0,0,0,0.3); border-radius: 4px; }
         .settings-btn svg { width: 16px; height: 16px; fill: currentColor; display: block; }
-        
         .telemetry-grid { display: flex; flex-direction: column; flex: 1; justify-content: center; width: 100%; }
         .telemetry-row { display: flex; justify-content: space-evenly; width: 100%; }
         .column { display: flex; flex-direction: column; align-items: center; width: 25%; }
@@ -90,341 +88,304 @@ class MainActivity : AppCompatActivity() {
         .label { font-size: 10px; color: #888; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; width: 25%; text-align: center; margin-top: 2px; }
         .anchored-row { position: relative; width: 100%; height: 20px; display: flex; align-items: center; }
         .game-progress { position: absolute; left: 10px; font-size: 12px; color: #888; font-weight: 900; }
-        
         .session-timer { position: absolute; left: 10px; top: 10px; font-size: 12px; font-weight: 900; color: #888; }
         .clock-container { position: absolute; right: 10px; }
         .clock { font-size: 12px; font-weight: 900; color: #888; }
-        
         .progress-bar-bg { width: 100%; height: 8px; background: #2A2E45; overflow: hidden; margin-top: auto; }
         .progress-bar-fill { height: 100%; background: #4CAF50; width: 0%; transition: width 0.5s; }
-        
-        .wrapper { margin-top: 120px; height: calc(100vh - 120px); display: flex; flex-direction: column; overflow: hidden; }
-        #pinned-achievements { flex-shrink: 0; background: #0F111A; padding: 18px 18px 0 18px; box-sizing: border-box; border-bottom: 2px solid #2A2E45; display: none; }
+        .wrapper { margin-top: 120px; height: calc(100vh - 120px); display: flex; flex-direction: column; overflow: hidden; width: 100%; }
+        #pinned-achievements { flex-shrink: 0; background: #0F111A; padding: 18px 18px 0 18px; box-sizing: border-box; border-bottom: 2px solid #2A2E45; display: none; width: 100%; }
         #pinned-achievements:not(:empty) { display: block; }
-        .content { flex-grow: 1; overflow-y: auto; padding: 18px; box-sizing: border-box; }
-        
-        .subset-header { font-size: 13px; font-weight: 900; color: #00BFA5; text-transform: uppercase; margin: 15px 0 8px 0; padding-bottom: 4px; border-bottom: 1px solid #2A2E45; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center; }
+        .content { flex-grow: 1; overflow-y: auto; padding: 18px; box-sizing: border-box; width: 100%; display: block; }
+        #achievement-list { width: 100%; display: block; }
+        .subset-header { font-size: 13px; font-weight: 900; color: #00BFA5; text-transform: uppercase; margin: 15px 0 8px 0; padding-bottom: 4px; border-bottom: 1px solid #2A2E45; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center; width: 100%; }
         .subset-header.completed { color: #888; border-bottom-color: #1E2132; margin-top: 25px; }
-        .subset-count { font-size: 10px; color: #888; }
-        
-        .achievement { display: flex; align-items: center; margin-bottom: 12px; padding: 12px; background: #1E2132; border-radius: 10px; border: 1px solid #2A2E45; position: relative; overflow: hidden; transition: border-color 0.3s, opacity 0.3s, transform 0.3s, box-shadow 0.3s; }
+        .achievement { display: flex; align-items: flex-start; margin-bottom: 12px; padding: 12px; background: #1E2132; border-radius: 10px; border: 1px solid #2A2E45; position: relative; overflow: hidden; transition: border-color 0.3s, opacity 0.3s, transform 0.3s, box-shadow 0.3s; width: 100%; box-sizing: border-box; }
         .achievement.unlocked { border-left: 4px solid #4CAF50; background: #242938; opacity: 0.6; }
         .achievement.challenge { border: 2px solid #FFD600; background: #2A2410; }
-        
-        .achievement.just-unlocked { 
-          border: 2px solid #4CAF50; 
-          box-shadow: 0 0 20px rgba(76, 175, 80, 0.6); 
-          animation: pulse-glow 2s infinite;
-          transform: scale(1.02);
-          opacity: 1 !important;
-        }
-        @keyframes pulse-glow {
-          0% { box-shadow: 0 0 10px rgba(76, 175, 80, 0.4); }
-          50% { box-shadow: 0 0 25px rgba(76, 175, 80, 0.8); }
-          100% { box-shadow: 0 0 10px rgba(76, 175, 80, 0.4); }
-        }
-        
-        .achievement-fill { position: absolute; top: 0; left: 0; bottom: 0; background: rgba(0, 191, 165, 0.1); transition: width 0.5s; }
-        .icon { width: 56px; height: 56px; margin-right: 15px; background: #2A2E45; border-radius: 6px; z-index: 1; }
-        .info { flex-grow: 1; min-width: 0; z-index: 1; }
-        .title { font-size: 16px; font-weight: bold; margin: 0; color: #FFF; }
+        .achievement-fill { position: absolute; top: 0; left: 0; bottom: 0; background: rgba(0, 191, 165, 0.1); transition: width 0.5s; z-index: 0; }
+        .icon { width: 56px; height: 56px; margin-right: 15px; background: #2A2E45; border-radius: 6px; z-index: 2; flex-shrink: 0; }
+        .info { flex: 1; min-width: 0; z-index: 2; display: flex; flex-direction: column; }
+        .title { font-size: 16px; font-weight: bold; margin: 0; color: #FFF; line-height: 1.2; }
         .desc { font-size: 12px; color: #B0B0B0; margin: 4px 0 0 0; line-height: 1.3; }
-        .achievement-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
-        .points { font-size: 11px; color: #FFD600; font-weight: 800; }
+        .achievement-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+        .points { font-size: 11px; color: #FFD600; font-weight: 800; display: flex; align-items: center; gap: 4px; }
         .step-progress { font-size: 11px; color: #00BFA5; font-weight: bold; }
         .badge-pill { position: absolute; top: 0; right: 0; font-size: 9px; font-weight: 900; padding: 1px 8px; border-bottom-left-radius: 6px; text-transform: uppercase; z-index: 2; color: #000; }
         .badge-missable { background: #FF5252; color: #FFF; }
         .badge-progression { background: #00BFA5; }
         .badge-win { background: #FFD600; }
         .badge-challenge { border: 1px solid #FFD600; background: rgba(255, 214, 0, 0.2); color: #FFD600; }
-
+        .profile-banner { display: flex; align-items: center; padding: 15px; background: #1A1C2E; border: 1px solid #00BFA5; border-radius: 12px; margin-bottom: 15px; width: 100%; box-sizing: border-box; }
+        .avatar { width: 50px; height: 50px; border-radius: 50%; border: 2px solid #00BFA5; margin-right: 15px; flex-shrink: 0; }
+        .profile-info { flex: 1; }
+        .profile-name { font-size: 16px; font-weight: 800; color: #FFF; margin-bottom: 2px; }
+        .profile-stats { font-size: 11px; color: #888; display: flex; gap: 8px; flex-wrap: wrap; }
+        .profile-stats strong { color: #00BFA5; }
+        .retropoints-text { color: #FFD600; }
+        .progression-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 10px; color: #CCC; background: #1A1C2E; border-radius: 8px; overflow: hidden; border: 1px solid #2A2E45; }
+        .progression-table th { background: #2A2E45; color: #888; text-transform: uppercase; text-align: left; padding: 6px 10px; font-weight: 900; }
+        .progression-table td { padding: 8px 10px; border-top: 1px solid #2A2E45; }
+        .aotw-card { background: linear-gradient(135deg, #1A1C2E 0%, #2A2E45 100%); border: 2px solid #FFD600; border-radius: 10px; padding: 12px; margin-bottom: 15px; position: relative; width: 100%; box-sizing: border-box; }
+        .aotw-label { position: absolute; top: -10px; left: 10px; background: #FFD600; color: #000; font-size: 9px; font-weight: 900; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; }
+        .game-card { padding: 12px; background: #1E2132; border-radius: 10px; border: 1px solid #2A2E45; margin-bottom: 10px; cursor: pointer; width: 100%; box-sizing: border-box; }
+        .game-card-header { display: flex; align-items: center; width: 100%; }
+        .game-icon { width: 40px; height: 40px; margin-right: 12px; border-radius: 4px; flex-shrink: 0; }
+        .game-title-text { font-size: 13px; font-weight: bold; color: #FFF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .game-console { font-size: 9px; color: #00BFA5; font-weight: 900; text-transform: uppercase; }
+        .game-progress-bar-bg { height: 3px; background: #2A2E45; border-radius: 2px; overflow: hidden; margin-top: 4px; width: 100%; }
+        .game-progress-bar-fill { height: 100%; background: #00BFA5; }
+        .expanded-achievements { margin-top: 10px; padding-top: 10px; border-top: 1px solid #2A2E45; display: none; }
+        .expanded-achievements.active { display: block; }
+        .mini-ach { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 11px; color: #B0B0B0; }
+        .mini-ach img { width: 24px; height: 24px; border-radius: 3px; }
         #modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 200; align-items: center; justify-content: center; }
-        .modal { background: #1A1C2E; width: 80%; max-width: 400px; border: 1px solid #00BFA5; border-radius: 12px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .modal { background: #1A1C2E; width: 90%; max-width: 450px; border: 1px solid #00BFA5; border-radius: 12px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: flex; flex-direction: column; max-height: 90vh; }
         .modal-title { font-size: 18px; font-weight: bold; color: #00BFA5; margin-bottom: 20px; border-bottom: 2px solid #00BFA5; padding-bottom: 10px; }
-        .filter-list { max-height: 300px; overflow-y: auto; }
+        .modal-scroll { flex-grow: 1; overflow-y: auto; }
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 5px; font-weight: 900; }
+        .input-group input { width: 100%; background: #0F111A; border: 1px solid #2A2E45; color: #FFF; padding: 10px; border-radius: 6px; box-sizing: border-box; }
+        .btn-save { width: 100%; padding: 12px; background: #00BFA5; border: none; border-radius: 6px; color: #000; font-weight: 900; text-transform: uppercase; cursor: pointer; }
         .filter-item { display: flex; align-items: center; padding: 12px 0; border-bottom: 1px solid #2A2E45; cursor: pointer; }
-        .filter-item:last-child { border-bottom: none; }
         .filter-item input { margin-right: 15px; transform: scale(1.5); }
         .filter-item span { font-size: 14px; font-weight: bold; flex: 1; }
-        .modal-divider { height: 1px; background: #2A2E45; margin: 15px 0; }
-        .modal-close { margin-top: 20px; width: 100%; padding: 12px; background: #00BFA5; border: none; border-radius: 6px; color: #000; font-weight: 900; text-transform: uppercase; cursor: pointer; }
+        .modal-divider { height: 1px; background: #2A2E45; margin: 15px 0; flex-shrink: 0; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #2A2E45; border-radius: 10px; }
         </style><script>
-        function getInitialState() {
-          return {
-            game_title: 'RetroArch Lnk',
-            fps: '--',
-            frametime: '--ms',
-            cpu_util: '--%',
-            gpu_util: '--%',
-            power_w: '--W',
-            temp_cpu: '--°',
-            temp_gpu: '--°',
-            battery: '--%',
-            achievements: [],
-            activeSubsets: {},
-            showHeaders: false,
-            hideUnlocked: false,
-            recentUnlocks: {},
-            startTime: Date.now()
-          };
+        var state = { game_title: 'No Game Running', fps: '--', cpu_util: '--%', gpu_util: '--%', battery: '--%', temp_cpu: '--°', temp_gpu: '--°', frametime: '--ms', power_w: '--W', achievements: [], activeSubsets: {}, showHeaders: false, hideUnlocked: false, recentUnlocks: {}, startTime: Date.now(), lastPacketTime: 0, profile: null, recentGames: [], aotw: null, awards: null, expandedGame: null, gameAchievements: {}, isLoading: false, gameMetadata: {} };
+        var nextGlobalIndex = 0;
+        async function apiFetch(endpoint, params) {
+          var user = window.localStorage.getItem('ra_user'); var key = window.localStorage.getItem('ra_key');
+          if (!user || !key) return null;
+          var url = 'https://retroachievements.org/API/' + endpoint + '?z=' + user + '&y=' + key;
+          if (params) for (var p in params) url += '&' + p + '=' + params[p];
+          try { var res = await fetch(url); return await res.json(); } catch(e) { return null; }
         }
-
-        let state = getInitialState();
-        let nextGlobalIndex = 0;
-
-        function formatTemp(t) { return t > 0 ? (t/1000).toFixed(1) + '°' : '--°'; }
-        
-        function formatDuration(ms) {
-          const totalSecs = Math.floor(ms / 1000);
-          const hours = Math.floor(totalSecs / 3600);
-          const mins = Math.floor((totalSecs % 3600) / 60);
-          const secs = totalSecs % 60;
-          return (hours > 0 ? hours + ':' : '') + mins.toString().padStart(2, '0') + ':' + secs.toString().padStart(2, '0');
+        async function fetchProfile() {
+          var user = window.localStorage.getItem('ra_user'); if(!user) { render(); return; }
+          state.isLoading = true; render();
+          var sum = await apiFetch('API_GetUserSummary.php', { u: user, g: 0, a: 0 }); if (sum && sum.User) state.profile = sum;
+          var games = await apiFetch('API_GetUserRecentlyPlayedGames.php', { u: user, c: 10 }); if (Array.isArray(games)) state.recentGames = games;
+          var aotw = await apiFetch('API_GetAchievementOfTheWeek.php'); if (aotw) state.aotw = aotw;
+          var awd = await apiFetch('API_GetUserAwards.php', { u: user }); if (awd) state.awards = awd;
+          state.isLoading = false; render();
         }
-
+        async function enrichRetroPoints(gameId) {
+          if (state.gameMetadata[gameId]) return;
+          var user = window.localStorage.getItem('ra_user');
+          var data = await apiFetch('API_GetGameInfoAndUserProgress.php', { u: user, g: gameId });
+          if (data && data.Achievements) { state.gameMetadata[gameId] = data.Achievements; render(); }
+        }
+        async function toggleGameExpansion(gameId) {
+          if (state.expandedGame === gameId) { state.expandedGame = null; } else {
+            state.expandedGame = gameId;
+            if (!state.gameAchievements[gameId]) {
+              var user = window.localStorage.getItem('ra_user');
+              var data = await apiFetch('API_GetGameInfoAndUserProgress.php', { u: user, g: gameId });
+              if (data && data.Achievements) {
+                state.gameAchievements[gameId] = Object.values(data.Achievements).filter(function(a){return a.DateEarnedHardcore || a.DateEarned;})
+                  .sort(function(a, b){return new Date(b.DateEarnedHardcore || b.DateEarned) - new Date(a.DateEarnedHardcore || a.DateEarned);}).slice(0, 5);
+              }
+            }
+          }
+          render();
+        }
         function update(newData) {
           if(!newData) return;
-
-          if (newData.game_title && newData.game_title !== state.game_title) {
-            const title = newData.game_title;
-            const prevHeaders = state.showHeaders;
-            const prevHideUnlocked = state.hideUnlocked;
-            state = getInitialState();
-            state.game_title = title;
-            state.showHeaders = prevHeaders;
-            state.hideUnlocked = prevHideUnlocked;
-            nextGlobalIndex = 0;
+          var isGeneric = !newData.game_title || ['RetroArch','Dolphin','PPSSPP'].includes(newData.game_title);
+          if (isGeneric) { state.lastPacketTime = 0; render(); return; }
+          state.lastPacketTime = Date.now();
+          if (newData.game_title !== state.game_title) {
+            var old = state; state = { game_title: newData.game_title, fps: '--', cpu_util: '--%', gpu_util: '--%', battery: '--%', temp_cpu: '--°', temp_gpu: '--°', frametime: '--ms', power_w: '--W', achievements: [], activeSubsets: {}, showHeaders: old.showHeaders, hideUnlocked: old.hideUnlocked, recentUnlocks: {}, startTime: Date.now(), lastPacketTime: Date.now(), profile: old.profile, recentGames: old.recentGames, awards: old.awards, aotw: old.aotw, expandedGame: null, gameAchievements: {}, isLoading: false, gameMetadata: old.gameMetadata };
           }
-
-          const batteryVal = newData.battery ?? newData.batt_percent ?? newData.battery_percent;
-          const cpuVal = newData.cpu_util ?? newData.cpu_percent ?? newData.cpu;
-          const gpuVal = newData.gpu_util ?? newData.gpu_percent ?? newData.gpu;
-          const powerVal = newData.power_w ?? newData.power;
-
           if(newData.fps !== undefined) state.fps = Math.round(newData.fps);
           if(newData.frametime !== undefined) state.frametime = newData.frametime.toFixed(1) + 'ms';
-          if(cpuVal !== undefined) state.cpu_util = Math.round(cpuVal) + '%';
-          if(gpuVal !== undefined) state.gpu_util = Math.round(gpuVal) + '%';
-          if(powerVal !== undefined) state.power_w = powerVal.toFixed(1) + 'W';
-          if(newData.temp_cpu !== undefined) state.temp_cpu = formatTemp(newData.temp_cpu);
-          if(newData.temp_gpu !== undefined) state.temp_gpu = formatTemp(newData.temp_gpu);
-          if(batteryVal !== undefined) state.battery = batteryVal + '%';
-
+          var c = newData.cpu_util ?? newData.cpu_percent ?? newData.cpu;
+          if(c !== undefined) state.cpu_util = Math.round(c) + '%';
+          if(newData.temp_cpu !== undefined) state.temp_cpu = (newData.temp_cpu > 1000 ? (newData.temp_cpu/1000).toFixed(1) : newData.temp_cpu) + '°';
+          var g = newData.gpu_util ?? newData.gpu_percent ?? newData.gpu;
+          if(g !== undefined) state.gpu_util = Math.round(g) + '%';
+          if(newData.temp_gpu !== undefined) state.temp_gpu = (newData.temp_gpu > 1000 ? (newData.temp_gpu/1000).toFixed(1) : newData.temp_gpu) + '°';
+          var b = newData.battery ?? newData.batt_percent ?? newData.battery_percent;
+          if(b !== undefined) state.battery = b + '%';
+          if(newData.power_w !== undefined) state.power_w = newData.power_w.toFixed(1) + 'W';
           if (newData.achievements) {
-            newData.achievements.forEach(newA => {
-              const sId = newA.subset_id || 0;
-              const sTitle = newA.subset_title || '';
-              
-              if (state.activeSubsets[sId] === undefined) {
-                const isBase = (sId === 0);
-                const matchesGame = (sTitle.trim() === state.game_title.trim());
-                state.activeSubsets[sId] = isBase || matchesGame;
-              }
-              
-              const idx = state.achievements.findIndex(a => a.title === newA.title);
+            newData.achievements.forEach(function(newA){
+              var sId = newA.subset_id || 0;
+              if (state.activeSubsets[sId] === undefined) state.activeSubsets[sId] = (sId === 0 || (newA.subset_title || '').trim() === state.game_title.trim());
+              var idx = state.achievements.findIndex(function(a){return a.title === newA.title;});
               if (idx !== -1) {
-                const oldA = state.achievements[idx];
-                if (!oldA.unlocked && newA.unlocked) {
-                  state.recentUnlocks[newA.title] = Date.now();
-                  setTimeout(() => {
-                    delete state.recentUnlocks[newA.title];
-                    render();
-                  }, 10000);
-                }
-                // Preserve originalIndex even on update
-                const preservedIndex = oldA.originalIndex;
-                state.achievements[idx] = { ...oldA, ...newA, originalIndex: preservedIndex };
-              } else {
-                newA.originalIndex = nextGlobalIndex++;
-                state.achievements.push(newA);
-              }
+                if (!state.achievements[idx].unlocked && newA.unlocked) { state.recentUnlocks[newA.title] = Date.now(); setTimeout(function(){ delete state.recentUnlocks[newA.title]; render(); }, 10000); fetchProfile(); }
+                state.achievements[idx] = Object.assign({}, state.achievements[idx], newA);
+              } else { newA.originalIndex = nextGlobalIndex++; state.achievements.push(newA); }
+              if (newA.game_id) enrichRetroPoints(newA.game_id);
             });
           }
-
           render();
         }
-
-        function toggleSubset(id) {
-          state.activeSubsets[id] = !state.activeSubsets[id];
-          render();
-          renderSettings();
+        function getAchievementHtml(a, isFeed) {
+          var statusClass = a.unlocked ? 'unlocked' : (a.is_challenge ? 'challenge' : 'locked');
+          var unlockClass = state.recentUnlocks[a.title] ? ' just-unlocked' : '';
+          var fillWidth = a.unlocked ? 100 : (a.progress_percent || 0);
+          var title = isFeed ? (a.GameTitle + ': ' + a.Title) : a.title;
+          var desc = isFeed ? a.Description : a.description;
+          var points = isFeed ? a.Points : a.points;
+          var pTxt = (a.progress_text && a.progress_text.toString().trim() !== '') ? a.progress_text : '';
+          var rPoints = '';
+          if (isFeed) rPoints = a.TrueRatio;
+          else if (a.game_id && state.gameMetadata[a.game_id]) {
+            var metaMatch = Object.values(state.gameMetadata[a.game_id]).find(function(m){return m.Title === a.title;});
+            if (metaMatch) rPoints = metaMatch.TrueRatio;
+          }
+          var icon = a.badge_url || a.badge_locked_url;
+          if (!icon && a.BadgeName) icon = 'https://retroachievements.org/Badge/' + a.BadgeName + (a.unlocked || isFeed ? '' : '_lock') + '.png';
+          var badge = '';
+          if (a.is_challenge) badge = '<div class="badge-pill badge-challenge">Challenge</div>';
+          else if (a.type === 1) badge = '<div class="badge-pill badge-missable">Missable</div>';
+          else if (a.type === 2) badge = '<div class="badge-pill badge-progression">Progression</div>';
+          else if (a.type === 3) badge = '<div class="badge-pill badge-win">Win Condition</div>';
+          return '<div class="achievement ' + statusClass + unlockClass + '">' + badge +
+                  '<div class="achievement-fill" style="width:' + fillWidth + '%"></div>' + 
+                  '<img class="icon" src="' + icon + '">' +
+                  '<div class="info"><p class="title">' + title + '</p><p class="desc">' + desc + '</p>' +
+                  '<div class="achievement-footer"><span class="points">🪙 ' + points + (rPoints ? ' (📈 ' + rPoints + ')' : '') + '</span>' +
+                  (pTxt ? '<span class="step-progress">' + pTxt + '</span>' : '') + '</div>' +
+                  '</div></div>';
         }
-
-        function toggleHeaders() {
-          state.showHeaders = !state.showHeaders;
-          render();
-          renderSettings();
+        function render() {
+          var hasGame = (Date.now() - state.lastPacketTime < 10000); 
+          if (!hasGame) {
+             document.getElementById('game-title').innerText = 'No Game Running';
+             document.getElementById('fps').innerText = '--'; document.getElementById('cpu_util').innerText = '--%'; document.getElementById('gpu_util').innerText = '--%'; document.getElementById('battery').innerText = '--%'; document.getElementById('temp_cpu').innerText = '--°'; document.getElementById('temp_gpu').innerText = '--°'; document.getElementById('frametime').innerText = '--ms'; document.getElementById('power_w').innerText = '--W'; document.getElementById('session-timer').innerText = '00:00'; document.getElementById('progress-text').innerText = '-- / --'; document.getElementById('progress-fill').style.width = '0%'; document.getElementById('pinned-achievements').innerHTML = '';
+             var html = '';
+             if (state.profile) {
+               html += '<div class="profile-banner"><img class="avatar" src="https://retroachievements.org' + state.profile.UserPic + '?t=' + Date.now() + '">' +
+                       '<div class="profile-info"><div class="profile-name">' + state.profile.User + '</div>' +
+                       '<div class="profile-stats">Points: <strong>' + state.profile.TotalPoints + '</strong> <span class="retropoints-text">(' + (state.profile.TotalTruePoints || 0) + ')</span> | Rank: <strong>#' + state.profile.Rank + '</strong></div></div></div>';
+               if (state.awards && state.awards.TotalAwards) {
+                 html += '<table class="progression-table"><thead><tr><th>Progression Status</th><th>Count</th></tr></thead><tbody>' +
+                         '<tr><td>Beaten</td><td>' + state.awards.TotalAwards.Beaten + '</td></tr>' +
+                         '<tr><td>Mastered</td><td>' + state.awards.TotalAwards.Mastered + '</td></tr>' +
+                         '</tbody></table>';
+               }
+               if (state.aotw) {
+                 html += '<div class="aotw-card"><div class="aotw-label">Achievement of the Week</div>' +
+                         '<div style="display:flex;align-items:center;margin-top:5px;">' +
+                         '<img src="https://retroachievements.org/Badge/' + state.aotw.Achievement.BadgeName + '.png" style="width:40px;margin-right:12px;border-radius:4px;">' +
+                         '<div style="flex:1;"><div style="font-size:14px;font-weight:bold;color:#FFD600;">' + state.aotw.Achievement.Title + '</div>' +
+                         '<div style="font-size:10px;color:#888;">' + state.aotw.Game.Title + '</div></div></div></div>';
+               }
+               if (state.recentGames.length > 0) {
+                 html += '<div class="subset-header"><span>Recently Played</span></div>';
+                 state.recentGames.forEach(function(game){
+                   var percent = Math.round((game.NumAchievedHardcore / game.NumPossibleAchievements) * 100);
+                   var isExpanded = state.expandedGame === game.GameID;
+                   html += '<div class="game-card" onclick="toggleGameExpansion(' + game.GameID + ')">' +
+                           '<div class="game-card-header"><img class="game-icon" src="https://media.retroachievements.org' + game.ImageIcon + '">' +
+                           '<div class="game-info"><div class="game-title-text">' + game.Title + '</div><div class="game-console">' + game.ConsoleName + '</div>' +
+                           '<div class="game-progress-bar-bg"><div class="game-progress-bar-fill" style="width: ' + percent + '%"></div></div></div>' +
+                           '<div style="font-size:10px;color:#888;margin-left:10px;">' + percent + '%</div></div>' +
+                           '<div class="expanded-achievements ' + (isExpanded ? 'active' : '') + '">';
+                   if (isExpanded && state.gameAchievements[game.GameID]) {
+                     state.gameAchievements[game.GameID].forEach(function(a){
+                       html += '<div class="mini-ach"><img src="https://retroachievements.org/Badge/' + a.BadgeName + '.png"><span>' + a.Title + '</span></div>';
+                     });
+                   } else if (isExpanded) { html += '<div style="font-size:10px;color:#666;text-align:center;">Loading...</div>'; }
+                   html += '</div></div>';
+                 });
+               }
+             } else if (state.isLoading) { html = '<div style="text-align:center; padding: 50px; color:#888;">Syncing...</div>'; }
+             else { html = '<div style="text-align:center; padding: 50px; color:#888;">Enter credentials in settings.</div>'; }
+             document.getElementById('achievement-list').innerHTML = html;
+             return;
+          }
+          document.getElementById('game-title').innerText = state.game_title;
+          document.getElementById('fps').innerText = state.fps; document.getElementById('cpu_util').innerText = state.cpu_util; document.getElementById('gpu_util').innerText = state.gpu_util; document.getElementById('battery').innerText = state.battery;
+          document.getElementById('temp_cpu').innerText = state.temp_cpu; document.getElementById('temp_gpu').innerText = state.temp_gpu; document.getElementById('frametime').innerText = state.frametime; document.getElementById('power_w').innerText = state.power_w;
+          var vis = state.achievements.filter(function(a){return state.activeSubsets[a.subset_id || 0];});
+          var finalVis = state.hideUnlocked ? vis.filter(function(a){return !a.unlocked || state.recentUnlocks[a.title];}) : vis;
+          var pinned = finalVis.filter(function(a){return a.is_challenge || state.recentUnlocks[a.title];}).sort(function(a,b){return a.originalIndex - b.originalIndex;});
+          var remaining = finalVis.filter(function(a){return !a.is_challenge && !state.recentUnlocks[a.title];}).sort(function(a,b){return a.originalIndex - b.originalIndex;});
+          document.getElementById('pinned-achievements').innerHTML = pinned.map(function(a){return getAchievementHtml(a);}).join('');
+          var mainHtml = ''; var subsets = {};
+          remaining.filter(function(a){return !a.unlocked;}).forEach(function(a){
+            var id = a.subset_id || 0; if(!subsets[id]) subsets[id] = { title: a.subset_title || 'Base Set', items: [] };
+            subsets[id].items.push(a);
+          });
+          Object.keys(subsets).sort(function(a,b){return a-b;}).forEach(function(id){
+            if (state.showHeaders) mainHtml += '<div class="subset-header"><span>' + subsets[id].title + '</span></div>';
+            mainHtml += subsets[id].items.map(function(a){return getAchievementHtml(a);}).join('');
+          });
+          var unlocked = remaining.filter(function(a){return a.unlocked;});
+          if (!state.hideUnlocked && unlocked.length > 0) {
+            if (state.showHeaders) mainHtml += '<div class="subset-header completed"><span>Completed</span></div>';
+            mainHtml += unlocked.map(function(a){return getAchievementHtml(a);}).join('');
+          }
+          document.getElementById('achievement-list').innerHTML = mainHtml;
+          var tCnt = vis.length; var uCnt = vis.filter(function(i){return i.unlocked;}).length;
+          var per = tCnt > 0 ? Math.round((uCnt / tCnt) * 100) : 0;
+          document.getElementById('progress-text').innerText = uCnt + ' / ' + tCnt + ' (' + per + '%)';
+          document.getElementById('progress-fill').style.width = per + '%';
+          var d = Date.now() - state.startTime;
+          document.getElementById('session-timer').innerText = Math.floor(d/60000).toString().padStart(2,'0') + ':' + Math.floor((d%60000)/1000).toString().padStart(2,'0');
         }
-        
-        function toggleHideUnlocked() {
-          state.hideUnlocked = !state.hideUnlocked;
-          render();
-          renderSettings();
-        }
-
+        setInterval(function(){ var now = new Date(); document.getElementById('clock').innerText = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0'); render(); }, 1000);
+        window.onload = function() { fetchProfile(); };
+        function toggleSubset(id) { state.activeSubsets[id] = !state.activeSubsets[id]; render(); renderSettings(); }
+        function toggleHeaders() { state.showHeaders = !state.showHeaders; render(); renderSettings(); }
+        function toggleHideUnlocked() { state.hideUnlocked = !state.hideUnlocked; render(); renderSettings(); }
         function toggleSettings(show) {
           document.getElementById('modal-overlay').style.display = show ? 'flex' : 'none';
-          if (show) renderSettings();
+          if (window.Android) window.Android.setFocusable(show);
+          if (show) {
+            document.getElementById('input-user').value = window.localStorage.getItem('ra_user') || '';
+            document.getElementById('input-key').value = window.localStorage.getItem('ra_key') || '';
+            renderSettings();
+          }
         }
-
         function renderSettings() {
-          const container = document.getElementById('filter-list');
-          const subsetsMap = {};
-          state.achievements.forEach(a => {
-            const title = a.subset_title || 'Base Set';
-            const id = a.subset_id || 0;
+          var container = document.getElementById('filter-list'); var subsetsMap = {};
+          state.achievements.forEach(function(a){
+            var title = a.subset_title || 'Base Set'; var id = a.subset_id || 0;
             if (!subsetsMap[id]) subsetsMap[id] = title;
           });
-
-          let html = '';
-          html += '<div class="filter-item" onclick="toggleHeaders()">' +
-                  '<input type="checkbox" ' + (state.showHeaders ? 'checked' : '') + ' onclick="event.stopPropagation(); toggleHeaders()">' +
-                  '<span>Show Subset Headers</span></div>';
-          html += '<div class="filter-item" onclick="toggleHideUnlocked()">' +
-                  '<input type="checkbox" ' + (state.hideUnlocked ? 'checked' : '') + ' onclick="event.stopPropagation(); toggleHideUnlocked()">' +
-                  '<span>Hide Unlocked</span></div>';
+          var html = '<div class="filter-item" onclick="toggleHeaders()"><input type="checkbox" ' + (state.showHeaders ? 'checked' : '') + ' onclick="event.stopPropagation(); toggleHeaders()"><span>Show Subset Headers</span></div>';
+          html += '<div class="filter-item" onclick="toggleHideUnlocked()"><input type="checkbox" ' + (state.hideUnlocked ? 'checked' : '') + ' onclick="event.stopPropagation(); toggleHideUnlocked()"><span>Hide Unlocked</span></div>';
           html += '<div class="modal-divider"></div>';
-
-          Object.keys(subsetsMap).sort((a,b) => a-b).forEach(id => {
-            const active = state.activeSubsets[id];
-            const title = subsetsMap[id];
-            html += '<div class="filter-item" onclick="toggleSubset(' + id + ')">' +
-                    '<input type="checkbox" ' + (active ? 'checked' : '') + ' onclick="event.stopPropagation(); toggleSubset(' + id + ')">' +
-                    '<span>' + title + '</span></div>';
+          Object.keys(subsetsMap).sort(function(a,b){return a-b;}).forEach(function(id){
+            html += '<div class="filter-item" onclick="toggleSubset(' + id + ')"><input type="checkbox" ' + (state.activeSubsets[id] ? 'checked' : '') + ' onclick="event.stopPropagation(); toggleSubset(' + id + ')"><span>' + subsetsMap[id] + '</span></div>';
           });
           container.innerHTML = html;
         }
-
-        function getAchievementHtml(a) {
-          const statusClass = a.unlocked ? 'unlocked' : (a.is_challenge ? 'challenge' : 'locked');
-          const unlockClass = state.recentUnlocks[a.title] ? ' just-unlocked' : '';
-          const fillWidth = a.unlocked ? 100 : (a.progress_percent || 0);
-          const progressDisplay = (a.progress_text && a.progress_text.toString().trim() !== '') ? a.progress_text : '';
-          
-          let typeBadge = '';
-          if (a.is_challenge) typeBadge = '<div class="badge-pill badge-challenge">Active Challenge</div>';
-          else if (a.type === 1) typeBadge = '<div class="badge-pill badge-missable">Missable</div>';
-          else if (a.type === 2) typeBadge = '<div class="badge-pill badge-progression">Progression</div>';
-          else if (a.type === 3) typeBadge = '<div class="badge-pill badge-win">Win Condition</div>';
-
-          return '<div class="achievement ' + statusClass + unlockClass + '\">' + typeBadge +
-                  '<div class="achievement-fill" style="width:' + fillWidth + '%"></div>' + 
-                  '<img class="icon" src="' + (a.unlocked ? a.badge_url : a.badge_locked_url) + '">' +
-                  '<div class="info"><p class="title">' + a.title + '</p><p class="desc">' + a.description + '</p><div class="achievement-footer">' +
-                  '<span class="points">🪙 ' + a.points + ' Points</span>' + 
-                  (progressDisplay ? '<span class="step-progress">' + progressDisplay + '</span>' : '') + 
-                  '</div></div></div>';
+        function saveCredentials() {
+          window.localStorage.setItem('ra_user', document.getElementById('input-user').value);
+          window.localStorage.setItem('ra_key', document.getElementById('input-key').value);
+          fetchProfile(); toggleSettings(false);
         }
-
-        function render() {
-          document.getElementById('game-title').innerText = state.game_title;
-          document.getElementById('fps').innerText = state.fps;
-          document.getElementById('frametime').innerText = state.frametime;
-          document.getElementById('cpu_util').innerText = state.cpu_util;
-          document.getElementById('gpu_util').innerText = state.gpu_util;
-          document.getElementById('power_w').innerText = state.power_w;
-          document.getElementById('temp_cpu').innerText = state.temp_cpu;
-          document.getElementById('temp_gpu').innerText = state.temp_gpu;
-          document.getElementById('battery').innerText = state.battery;
-          document.getElementById('session-timer').innerText = formatDuration(Date.now() - state.startTime);
-
-          const visibleBySubset = state.achievements.filter(a => state.activeSubsets[a.subset_id || 0]);
-          
-          const totalCount = visibleBySubset.length;
-          const unlockedCount = visibleBySubset.filter(a => a.unlocked).length;
-          const totalPercent = totalCount > 0 ? Math.round((unlockedCount / totalCount) * 100) : 0;
-          document.getElementById('progress-text').innerText = unlockedCount + ' / ' + totalCount + ' (' + totalPercent + '%)';
-          document.getElementById('progress-fill').style.width = totalPercent + '%';
-
-          // PARTITIONING LOGIC (Global partitions)
-          const pinnedList = visibleBySubset.filter(a => a.is_challenge || state.recentUnlocks[a.title]);
-          const remaining = visibleBySubset.filter(a => !a.is_challenge && !state.recentUnlocks[a.title]);
-          
-          const lockedRegular = remaining.filter(a => !a.unlocked);
-          const unlockedRegular = remaining.filter(a => a.unlocked);
-
-          const sortFn = (a, b) => a.originalIndex - b.originalIndex;
-          pinnedList.sort(sortFn);
-          lockedRegular.sort(sortFn);
-          unlockedRegular.sort(sortFn);
-
-          // 1. Render Pinned
-          document.getElementById('pinned-achievements').innerHTML = pinnedList.map(a => getAchievementHtml(a)).join('');
-
-          // 2. Render Main List (Locked items grouped by subset)
-          const list = document.getElementById('achievement-list');
-          let html = '';
-          const subsetsMap = {};
-          lockedRegular.forEach(a => {
-            const id = a.subset_id || 0;
-            if (!subsetsMap[id]) subsetsMap[id] = { title: a.subset_title || 'Base Set', items: [] };
-            subsetsMap[id].items.push(a);
-          });
-
-          Object.keys(subsetsMap).sort((a,b) => a-b).forEach(id => {
-            const subset = subsetsMap[id];
-            if (state.showHeaders) {
-              const subUnlocked = subset.items.filter(i => i.unlocked).length;
-              html += '<div class="subset-header">' +
-                      '<span>' + subset.title + '</span>' +
-                      '<span class="subset-count">' + subUnlocked + ' / ' + subset.items.length + '</span>' +
-                      '</div>';
-            }
-            html += subset.items.map(a => getAchievementHtml(a)).join('');
-          });
-          
-          // 3. Render Unlocked Items at the very bottom (Flat list to keep relative Display Order)
-          if (!state.hideUnlocked && unlockedRegular.length > 0) {
-            if (state.showHeaders) {
-              html += '<div class="subset-header completed"><span>Completed Achievements</span></div>';
-            }
-            html += unlockedRegular.map(a => getAchievementHtml(a)).join('');
-          }
-
-          list.innerHTML = html;
-        }
-
-        setInterval(() => {
-          const now = new Date();
-          document.getElementById('clock').innerText = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
-          render();
-        }, 1000);
         </script></head><body>
-        <div id="modal-overlay" onclick="toggleSettings(false)">
-            <div class="modal" onclick="event.stopPropagation()">
-                <div class="modal-title">Display Settings</div>
-                <div id="filter-list" class="filter-list"></div>
-                <button class="modal-close" onclick="toggleSettings(false)">Close</button>
-            </div>
+        <div id="modal-overlay" onclick="toggleSettings(false)"><div class="modal" onclick="event.stopPropagation()">
+          <div class="modal-title">Settings</div><div class="modal-scroll">
+          <div class="input-group"><label>RA Username</label><input type="text" id="input-user"></div>
+          <div class="input-group"><label>API Key</label><input type="password" id="input-key"></div>
+          <div class="modal-divider"></div><div id="filter-list"></div></div>
+          <button class="btn-save" onclick="saveCredentials()">Save & Refresh</button>
+        </div></div>
+        <div class="dashboard">
+          <div id="session-timer" class="session-timer">00:00</div>
+          <div class="settings-btn" onclick="toggleSettings(true)"><svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg></div>
+          <p class="game-title" id="game-title">Waiting...</p>
+          <div class="telemetry-grid"><div class="telemetry-row">
+            <div class="column"><span class="val-text" id="frametime">--ms</span><span class="val-text" id='fps'>--</span></div>
+            <div class="column"><span class="val-text" id="cpu_util">--%</span><span class="val-text" id="temp_cpu">--°</span></div>
+            <div class="column"><span class="val-text" id="gpu_util">--%</span><span class="val-text" id="temp_gpu">--°</span></div>
+            <div class="column"><span class="val-text" id="battery">--%</span><span class="val-text" id="power_w">--W</span></div>
+          </div><div class="telemetry-row"><span class="label">FRAME</span><span class="label">CPU</span><span class="label">GPU</span><span class="label">BATT</span></div></div>
+          <div class="anchored-row"><div class="game-progress" id="progress-text">-- / --</div><div class="clock-container"><span class="clock" id="clock">--:--</span></div></div>
+          <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill"></div></div>
         </div>
-        <div class='dashboard'>
-            <div id="session-timer" class="session-timer">00:00</div>
-            <div class="settings-btn" onclick="toggleSettings(true)">
-                <svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg>
-            </div>
-            <p class='game-title' id='game-title'>Waiting...</p>
-            <div class='telemetry-grid'>
-                <div class='telemetry-row'>
-                    <div class='column'><span class='val-text' id='frametime'>--ms</span><span class='val-text' id='fps'>--</span></div>
-                    <div class='column'><span class='val-text' id='cpu_util'>--%</span><span class='val-text' id='temp_cpu'>--°</span></div>
-                    <div class='column'><span class='val-text' id='gpu_util'>--%</span><span class='val-text' id='temp_gpu'>--°</span></div>
-                    <div class='column'><span class='val-text' id='battery'>--%</span><span class='val-text' id='power_w'>--W</span></div>
-                </div>
-                <div class='telemetry-row'>
-                    <span class='label'>FRAME</span><span class='label'>CPU</span><span class='label'>GPU</span><span class='label'>BATT</span>
-                </div>
-            </div>
-            <div class='anchored-row'>
-                <div class='game-progress' id='progress-text'>-- / --</div>
-                <div class='clock-container'><span class='clock' id='clock'>--:--</span></div>
-            </div>
-            <div class='progress-bar-bg'><div class='progress-bar-fill' id='progress-fill'></div></div>
-        </div>
-        <div class='wrapper'>
-            <div id='pinned-achievements'></div>
-            <div class='content'>
-                <div id='achievement-list'></div>
-            </div>
-        </div></body></html>"""
+        <div class="wrapper"><div id="pinned-achievements"></div><div class="content"><div id="achievement-list"></div></div></div>
+        </body></html>"""
     }
 }
