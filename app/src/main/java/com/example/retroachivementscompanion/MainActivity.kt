@@ -77,12 +77,14 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private val DASHBOARD_HTML = """<html><head><style>
         body { background-color: #0F111A; color: #E0E0E0; font-family: sans-serif; padding: 0; margin: 0; overflow: hidden; }
-        .dashboard { position: fixed; top: 0; left: 0; right: 0; height: 120px; background: #1A1C2E; display: flex; flex-direction: column; padding: 8px 0 0 0; border-bottom: 4px solid #00BFA5; z-index: 100; box-sizing: border-box; transition: opacity 0.5s; }
-        .dashboard.no-game { opacity: 0.4; }
+        
+        .settings-btn { position: fixed; top: 5px; right: 5px; color: #888; cursor: pointer; z-index: 1000; padding: 4px; background: rgba(26,28,46,0.8); border-radius: 6px; border: 1px solid #2A2E45; }
+        .settings-btn svg { width: 18px; height: 18px; fill: currentColor; display: block; }
+        
+        .dashboard { position: fixed; top: 0; left: 0; right: 0; height: 120px; background: #1A1C2E; display: flex; flex-direction: column; padding: 8px 0 0 0; border-bottom: 4px solid #00BFA5; z-index: 100; box-sizing: border-box; transition: transform 0.4s; }
+        .dashboard.hidden { transform: translateY(-100%); }
+        
         .game-title { font-size: 19px; font-weight: 800; color: #00BFA5; margin: 0 0 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; text-align: center; }
-        .settings-btn { position: absolute; top: 10px; right: 10px; color: #888; cursor: pointer; z-index: 110; padding: 5px; background: rgba(0,0,0,0.3); border-radius: 4px; }
-        .settings-btn svg { width: 16px; height: 16px; fill: currentColor; display: block; }
-        .telemetry-grid { display: flex; flex-direction: column; flex: 1; justify-content: center; width: 100%; }
         .telemetry-row { display: flex; justify-content: space-evenly; width: 100%; }
         .column { display: flex; flex-direction: column; align-items: center; width: 25%; }
         .val-text { font-size: 18px; font-weight: bold; color: #FFF; line-height: 1.0; margin-bottom: 2px; transition: none !important; }
@@ -95,8 +97,10 @@ class MainActivity : AppCompatActivity() {
         .progress-bar-bg { width: 100%; height: 8px; background: #2A2E45; overflow: hidden; margin-top: auto; }
         .progress-bar-fill { height: 100%; background: #4CAF50; width: 0%; transition: width 0.5s; }
         
-        .wrapper { margin-top: 120px; height: calc(100vh - 120px); display: flex; flex-direction: column; overflow: hidden; width: 100%; }
-        #pinned-achievements { flex-shrink: 0; background: #0F111A; padding: 18px 18px 0 18px; box-sizing: border-box; border-bottom: 2px solid #2A2E45; display: none; width: 100%; }
+        .wrapper { margin-top: 120px; height: calc(100vh - 120px); display: flex; flex-direction: column; overflow: hidden; width: 100%; transition: margin-top 0.4s, height 0.4s; }
+        .wrapper.full-screen { margin-top: 0; height: 100vh; }
+        
+        #pinned-achievements { flex-shrink: 0; background: #0F111A; padding: 18px 18px 0 18px; box-sizing: border-box; border-bottom: 2px solid #2A2E45; display: none; }
         #pinned-achievements:not(:empty) { display: block; }
         .content { flex-grow: 1; overflow-y: auto; padding: 18px; box-sizing: border-box; width: 100%; }
         
@@ -120,10 +124,6 @@ class MainActivity : AppCompatActivity() {
         .badge-win { background: #FFD600; }
         .badge-challenge { border: 1px solid #FFD600; background: rgba(255, 214, 0, 0.2); color: #FFD600; }
         
-        /* Persistent Containers to avoid flashing */
-        #profile-box, #aotw-box { width: 100%; display: none; }
-        #profile-box.active, #aotw-box.active { display: block; }
-
         .profile-banner { display: flex; padding: 15px; background: #1A1C2E; border: 1px solid #00BFA5; border-radius: 12px; margin-bottom: 15px; width: 100%; box-sizing: border-box; gap: 15px; }
         .profile-left { display: flex; align-items: center; gap: 15px; flex: 1; }
         .avatar { width: 56px; height: 56px; border-radius: 50%; border: 2px solid #00BFA5; flex-shrink: 0; }
@@ -140,7 +140,6 @@ class MainActivity : AppCompatActivity() {
         .circle-beaten { background: #FFF; box-shadow: 0 0 5px #FFF; }
         .circle-mastered { background: #FFD600; box-shadow: 0 0 5px #FFD600; }
         .circle-soft-beaten { border: 1px solid #FFF; }
-        .circle-soft-completed { border: 1px solid #FFD600; }
 
         .aotw-card { background: linear-gradient(135deg, #1A1C2E 0%, #2A2E45 100%); border: 2px solid #FFD600; border-radius: 10px; padding: 12px; margin-bottom: 15px; position: relative; width: 100%; box-sizing: border-box; }
         .aotw-label { position: absolute; top: -10px; left: 10px; background: #FFD600; color: #000; font-size: 9px; font-weight: 900; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; }
@@ -158,7 +157,7 @@ class MainActivity : AppCompatActivity() {
         .expanded-achievements { margin-top: 15px; padding-top: 15px; border-top: 1px solid #2A2E45; display: none; }
         .expanded-achievements.active { display: block; }
         
-        #modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 200; align-items: center; justify-content: center; }
+        #modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2000; align-items: center; justify-content: center; }
         .modal { background: #1A1C2E; width: 90%; max-width: 450px; border: 1px solid #00BFA5; border-radius: 12px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: flex; flex-direction: column; max-height: 90vh; }
         .input-group input { width: 100%; background: #0F111A; border: 1px solid #2A2E45; color: #FFF; padding: 10px; border-radius: 6px; box-sizing: border-box; }
         .btn-save { width: 100%; padding: 12px; background: #00BFA5; border: none; border-radius: 6px; color: #000; font-weight: 900; text-transform: uppercase; cursor: pointer; }
@@ -171,7 +170,6 @@ class MainActivity : AppCompatActivity() {
         </style><script>
         var state = { game_title: 'No Game Running', fps: '--', cpu_util: '--%', gpu_util: '--%', battery: '--%', temp_cpu: '--°', temp_gpu: '--°', frametime: '--ms', power_w: '--W', achievements: [], activeSubsets: {}, showHeaders: false, hideUnlocked: false, recentUnlocks: {}, startTime: Date.now(), lastPacketTime: 0, profile: null, recentGames: [], aotw: null, awardCounts: { beaten: 0, mastered: 0, softBeaten: 0, softCompleted: 0 }, expandedGame: null, gameAchievements: {}, isLoading: false, gameMetadata: {}, profilePicUrl: '', enrichingId: null };
         var nextGlobalIndex = 0;
-        
         async function apiFetch(endpoint, params) {
           var user = window.localStorage.getItem('ra_user'); var key = window.localStorage.getItem('ra_key');
           if (!user || !key) return null;
@@ -179,32 +177,19 @@ class MainActivity : AppCompatActivity() {
           if (params) for (var p in params) url += '&' + p + '=' + params[p];
           try { var res = await fetch(url); return await res.json(); } catch(e) { return null; }
         }
-
         async function fetchProfile() {
-          var user = window.localStorage.getItem('ra_user'); if(!user) return;
+          var user = window.localStorage.getItem('ra_user'); if(!user) { render(); return; }
           state.isLoading = true; render();
           var sum = await apiFetch('API_GetUserSummary.php', { u: user, g: 0, a: 0 }); 
-          if (sum && sum.User) {
-            state.profile = sum;
-            state.profilePicUrl = 'https://retroachievements.org' + sum.UserPic + '?t=' + Date.now();
-          }
-          var games = await apiFetch('API_GetUserRecentlyPlayedGames.php', { u: user, c: 10 }); if (Array.isArray(games)) state.recentGames = games;
+          if (sum && sum.User) { state.profile = sum; state.profilePicUrl = 'https://retroachievements.org' + sum.UserPic + '?t=' + Date.now(); }
+          var games = await apiFetch('API_GetUserRecentlyPlayedGames.php', { u: user, c: 5 }); if (Array.isArray(games)) state.recentGames = games;
           var aotw = await apiFetch('API_GetAchievementOfTheWeek.php'); if (aotw) state.aotw = aotw;
-          
           var awards = await apiFetch('API_GetUserAwards.php', { u: user });
-          if (awards && awards.VisibleUserAwards) {
-            var counts = { beaten: 0, mastered: 0, softBeaten: 0, softCompleted: 0 };
-            awards.VisibleUserAwards.forEach(function(a){
-              if (a.AwardType === 'Beaten') counts.beaten++;
-              else if (a.AwardType === 'Mastery') counts.mastered++;
-              else if (a.AwardType === 'Completion') counts.softCompleted++;
-              else if (a.AwardType.indexOf('Softcore') !== -1) counts.softBeaten++;
-            });
-            state.awardCounts = counts;
+          if (awards) {
+            state.awardCounts = { beaten: awards.BeatenHardcoreAwardsCount || 0, softBeaten: awards.BeatenSoftcoreAwardsCount || 0, mastered: awards.MasteryAwardsCount || 0, softCompleted: awards.CompletionAwardsCount || 0 };
           }
           state.isLoading = false; render();
         }
-
         async function enrichRetroPoints(gameId) {
           if (state.gameMetadata[gameId] || state.enrichingId === gameId) return;
           state.enrichingId = gameId;
@@ -212,7 +197,6 @@ class MainActivity : AppCompatActivity() {
           var data = await apiFetch('API_GetGameInfoAndUserProgress.php', { u: user, g: gameId });
           if (data && data.Achievements) { state.gameMetadata[gameId] = data.Achievements; state.enrichingId = null; render(); } else { state.enrichingId = null; }
         }
-
         async function toggleGameExpansion(gameId) {
           if (state.expandedGame === gameId) { state.expandedGame = null; } else {
             state.expandedGame = gameId;
@@ -227,7 +211,6 @@ class MainActivity : AppCompatActivity() {
           }
           render();
         }
-
         function update(newData) {
           if(!newData) return;
           var isGeneric = !newData.game_title || ['RetroArch','Dolphin','PPSSPP'].includes(newData.game_title);
@@ -261,9 +244,8 @@ class MainActivity : AppCompatActivity() {
           }
           render();
         }
-
         function getAchievementHtml(a, isFeed) {
-          var statusClass = a.unlocked ? 'unlocked' : (a.is_challenge ? 'challenge' : 'locked');
+          var statusClass = (a.unlocked || isFeed) ? 'unlocked' : (a.is_challenge ? 'challenge' : 'locked');
           var unlockClass = state.recentUnlocks[a.title] ? ' just-unlocked' : '';
           var fillWidth = (a.unlocked || isFeed) ? 100 : (a.progress_percent || 0);
           var titleText = isFeed ? a.Title : a.title;
@@ -284,7 +266,7 @@ class MainActivity : AppCompatActivity() {
           else if (a.type === 1) badge = '<div class="badge-pill badge-missable">Missable</div>';
           else if (a.type === 2) badge = '<div class="badge-pill badge-progression">Progression</div>';
           else if (a.type === 3) badge = '<div class="badge-pill badge-win">Win Condition</div>';
-          return '<div class="achievement ' + (isFeed ? 'unlocked' : statusClass) + unlockClass + '">' + badge +
+          return '<div class="achievement ' + statusClass + unlockClass + '">' + badge +
                   '<div class="achievement-fill" style="width:' + fillWidth + '%"></div>' + 
                   '<img class="icon" src="' + icon + '">' +
                   '<div class="info"><p class="title">' + titleText + '</p><p class="desc">' + descText + '</p>' +
@@ -292,57 +274,38 @@ class MainActivity : AppCompatActivity() {
                   (pTxt ? '<span class="step-progress">' + pTxt + '</span>' : '') + '</div>' +
                   '</div></div>';
         }
-
         function render() {
           var hasGame = (Date.now() - state.lastPacketTime < 10000); 
           var dash = document.querySelector('.dashboard');
-          if (hasGame) dash.classList.remove('no-game'); else dash.classList.add('no-game');
-
-          // Always Update Fixed HUD Dashboard
+          var wrap = document.querySelector('.wrapper');
           if (hasGame) {
-              document.getElementById('game-title').innerText = state.game_title;
-              document.getElementById('fps').innerText = state.fps; document.getElementById('cpu_util').innerText = state.cpu_util; document.getElementById('gpu_util').innerText = state.gpu_util; document.getElementById('battery').innerText = state.battery;
-              document.getElementById('temp_cpu').innerText = state.temp_cpu; document.getElementById('temp_gpu').innerText = state.temp_gpu; document.getElementById('frametime').innerText = state.frametime; document.getElementById('power_w').innerText = state.power_w;
-          }
+             dash.classList.remove('hidden'); wrap.classList.remove('full-screen');
+             document.getElementById('game-title').innerText = state.game_title;
+             document.getElementById('fps').innerText = state.fps; document.getElementById('cpu_util').innerText = state.cpu_util; document.getElementById('gpu_util').innerText = state.gpu_util; document.getElementById('battery').innerText = state.battery;
+             document.getElementById('temp_cpu').innerText = state.temp_cpu; document.getElementById('temp_gpu').innerText = state.temp_gpu; document.getElementById('frametime').innerText = state.frametime; document.getElementById('power_w').innerText = state.power_w;
+          } else { dash.classList.add('hidden'); wrap.classList.add('full-screen'); }
 
           if (!hasGame) {
-             document.getElementById('game-title').innerText = 'No Game Running';
-             document.getElementById('fps').innerText = '--'; document.getElementById('cpu_util').innerText = '--%'; document.getElementById('gpu_util').innerText = '--%'; document.getElementById('battery').innerText = '--%'; document.getElementById('temp_cpu').innerText = '--°'; document.getElementById('temp_gpu').innerText = '--°'; document.getElementById('frametime').innerText = '--ms'; document.getElementById('power_w').innerText = '--W'; document.getElementById('session-timer').innerText = '00:00'; document.getElementById('progress-text').innerText = '-- / --'; document.getElementById('progress-fill').style.width = '0%'; document.getElementById('pinned-achievements').innerHTML = '';
-             
-             // Build Profile Box
-             var pBox = document.getElementById('profile-box');
-             if (state.profile) {
-               pBox.classList.add('active');
-               var p = state.profile;
-               var soft = p.BeatenSoftcoreAwardsCount || 0;
-               var beaten = p.BeatenHardcoreAwardsCount || 0;
-               var mastered = p.MasteryAwardsCount || 0;
-               
-               pBox.innerHTML = '<div class="profile-banner"><div class="profile-left"><img class="avatar" src="' + state.profilePicUrl + '">' +
-                       '<div class="profile-info"><div class="profile-name">' + p.User + '</div>' +
-                       '<div class="profile-stats">Points: <strong>' + p.TotalPoints + '</strong> <span class="retropoints-text">(' + (p.TotalTruePoints || 0) + ')</span> | Rank: <strong>#' + p.Rank + '</strong></div></div></div>' +
-                       '<div class="profile-right">' +
-                       '<div class="award-stat"><div class="prog-circle circle-soft-beaten"></div>SOFT <span>' + soft + '</span></div>' +
-                       '<div class="award-stat"><div class="prog-circle circle-beaten"></div>BEATEN <span>' + beaten + '</span></div>' +
-                       '<div class="award-stat"><div class="prog-circle circle-mastered"></div>MASTERED <span>' + mastered + '</span></div></div></div>';
-             } else { pBox.classList.remove('active'); }
-
-             // Build AOTW Box
-             var aBox = document.getElementById('aotw-box');
-             if (state.aotw) {
-               aBox.classList.add('active');
-               aBox.innerHTML = '<div class="aotw-card"><div class="aotw-label">Achievement of the Week</div>' +
-                       '<div style="display:flex;align-items:center;margin-top:5px;">' +
-                       '<img src="https://retroachievements.org/Badge/' + state.aotw.Achievement.BadgeName + '.png" style="width:40px;margin-right:12px;border-radius:4px;">' +
-                       '<div style="flex:1;"><div style="font-size:14px;font-weight:bold;color:#FFD600;">' + state.aotw.Achievement.Title + '</div>' +
-                       '<div style="font-size:10px;color:#888;">' + state.aotw.Game.Title + '</div></div></div></div>';
-             } else { aBox.classList.remove('active'); }
-
-             // Build Recent Games List
              var html = '';
              if (state.profile) {
+               var awd = state.awardCounts;
+               html += '<div class="profile-banner"><div class="profile-left"><img class="avatar" src="' + state.profilePicUrl + '">' +
+                       '<div class="profile-info"><div class="profile-name">' + state.profile.User + '</div>' +
+                       '<div class="profile-stats">Points: <strong>' + state.profile.TotalPoints + '</strong> <span class="retropoints-text">(' + (state.profile.TotalTruePoints || 0) + ')</span> | Rank: <strong>#' + state.profile.Rank + '</strong></div></div></div>' +
+                       '<div class="profile-right">' +
+                       '<div class="award-stat"><div class="prog-circle circle-soft-beaten"></div>SOFT <span>' + awd.softBeaten + '</span></div>' +
+                       '<div class="award-stat"><div class="prog-circle circle-beaten"></div>BEATEN <span>' + awd.beaten + '</span></div>' +
+                       '<div class="award-stat"><div class="prog-circle circle-mastered"></div>MASTERED <span>' + awd.mastered + '</span></div></div></div>';
+               if (state.aotw) {
+                 html += '<div class="aotw-card"><div class="aotw-label">Achievement of the Week</div>' +
+                         '<div style="display:flex;align-items:center;margin-top:5px;">' +
+                         '<img src="https://retroachievements.org/Badge/' + state.aotw.Achievement.BadgeName + '.png" style="width:40px;margin-right:12px;border-radius:4px;">' +
+                         '<div style="flex:1;"><div style="font-size:10px;color:#00BFA5;font-weight:900;text-transform:uppercase;margin-bottom:2px;">' + (state.aotw.Console ? state.aotw.Console.Title : '') + '</div>' +
+                         '<div style="font-size:14px;font-weight:bold;color:#FFD600;">' + state.aotw.Achievement.Title + '</div>' +
+                         '<div style="font-size:10px;color:#888;">' + state.aotw.Game.Title + '</div></div></div></div>';
+               }
                if (state.recentGames.length > 0) {
-                 html += '<div class="subset-header"><span>Recently Played</span></div>';
+                 html += '<div class="subset-header"><span>Last 5 Games Played</span></div>';
                  state.recentGames.forEach(function(game){
                    var percent = Math.round((game.NumAchievedHardcore / game.NumPossibleAchievements) * 100);
                    var isExpanded = state.expandedGame === game.GameID;
@@ -365,15 +328,10 @@ class MainActivity : AppCompatActivity() {
              return;
           }
 
-          // Active Mode rendering
-          document.getElementById('profile-box').classList.remove('active');
-          document.getElementById('aotw-box').classList.remove('active');
-          
           var vis = state.achievements.filter(function(a){return state.activeSubsets[a.subset_id || 0];});
           var finalVis = state.hideUnlocked ? vis.filter(function(a){return !a.unlocked || state.recentUnlocks[a.title];}) : vis;
           var pinned = finalVis.filter(function(a){return a.is_challenge || state.recentUnlocks[a.title];}).sort(function(a,b){return a.originalIndex - b.originalIndex;});
           var remaining = finalVis.filter(function(a){return !a.is_challenge && !state.recentUnlocks[a.title];}).sort(function(a,b){return a.originalIndex - b.originalIndex;});
-          
           document.getElementById('pinned-achievements').innerHTML = pinned.map(function(a){return getAchievementHtml(a);}).join('');
           var mainHtml = ''; var subsets = {};
           remaining.filter(function(a){return !a.unlocked;}).forEach(function(a){
@@ -390,7 +348,6 @@ class MainActivity : AppCompatActivity() {
             mainHtml += unlocked.map(function(a){return getAchievementHtml(a);}).join('');
           }
           document.getElementById('achievement-list').innerHTML = mainHtml;
-          
           var tCnt = vis.length; var uCnt = vis.filter(function(i){return i.unlocked;}).length;
           var per = tCnt > 0 ? Math.round((uCnt / tCnt) * 100) : 0;
           document.getElementById('progress-text').innerText = uCnt + ' / ' + tCnt + ' (' + per + '%)';
@@ -432,6 +389,7 @@ class MainActivity : AppCompatActivity() {
           fetchProfile(); toggleSettings(false);
         }
         </script></head><body>
+        <div class="settings-btn" onclick="toggleSettings(true)"><svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg></div>
         <div id="modal-overlay" onclick="toggleSettings(false)"><div class="modal" onclick="event.stopPropagation()">
           <div class="modal-title">Settings</div><div class="modal-scroll">
           <div class="input-group"><label>RA Username</label><input type="text" id="input-user"></div>
@@ -441,7 +399,6 @@ class MainActivity : AppCompatActivity() {
         </div></div>
         <div class="dashboard">
           <div id="session-timer" class="session-timer">00:00</div>
-          <div class="settings-btn" onclick="toggleSettings(true)"><svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg></div>
           <p class="game-title" id="game-title">Waiting...</p>
           <div class="telemetry-grid"><div class="telemetry-row">
             <div class="column"><span class="val-text" id="frametime">--ms</span><span class="val-text" id='fps'>--</span></div>
@@ -455,8 +412,6 @@ class MainActivity : AppCompatActivity() {
         <div class="wrapper">
             <div id="pinned-achievements"></div>
             <div class="content">
-                <div id="profile-box"></div>
-                <div id="aotw-box"></div>
                 <div id="achievement-list"></div>
             </div>
         </div>
