@@ -158,7 +158,7 @@ class MainActivity : AppCompatActivity() {
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-thumb { background: #2A2E45; border-radius: 10px; }
         </style><script>
-        var state = { game_title: 'No Game Running', fps: '--', cpu_util: '--%', gpu_util: '--%', battery: '--%', temp_cpu: '--°', temp_gpu: '--°', frametime: '--ms', power_w: '--W', achievements: [], activeSubsets: {}, showHeaders: false, hideUnlocked: false, recentUnlocks: {}, startTime: Date.now(), lastPacketTime: 0, profile: null, recentGames: [], aotw: null, awardCounts: { beaten: 0, mastered: 0, softBeaten: 0, softCompleted: 0 }, expandedGame: null, gameAchievements: {}, isLoading: false, profilePicUrl: '', isApiActive: false, lastApiPoll: 0, currentRpGameId: null };
+        var state = { game_title: 'No Game Running', fps: '--', cpu_util: '--%', gpu_util: '--%', battery: '--%', temp_cpu: '--°', temp_gpu: '--°', frametime: '--ms', power_w: '--W', achievements: [], activeSubsets: {}, showHeaders: false, hideUnlocked: false, recentUnlocks: {}, startTime: Date.now(), lastPacketTime: 0, profile: null, recentGames: [], aotw: null, awardCounts: { beaten: 0, mastered: 0, softBeaten: 0, softCompleted: 0 }, expandedGame: null, gameAchievements: {}, isLoading: false, profilePicUrl: '', isApiActive: false, lastApiPoll: 0, currentRpGameId: null, lastRpAchievementFetch: 0 };
         var nextGlobalIndex = 0;
         
         async function apiFetch(endpoint, params) {
@@ -198,21 +198,32 @@ class MainActivity : AppCompatActivity() {
           
           if (sum && sum.LastGameID && sum.LastGameID !== "0" && sum.RichPresenceMsg && sum.RichPresenceMsg.toLowerCase().indexOf('in menus') === -1) {
              var isPlaying = false;
-             if (sum.RecentlyPlayed && sum.RecentlyPlayed.length > 0) {
-                if (sum.RecentlyPlayed[0].GameID == sum.LastGameID) isPlaying = true;
+             if (sum.RecentlyPlayed && sum.RecentlyPlayed.length > 0 && sum.RecentlyPlayed[0].GameID == sum.LastGameID) {
+                var rpDate = new Date(sum.RichPresenceMsgDate + ' UTC');
+                var ageMs = Date.now() - rpDate.getTime();
+                if (ageMs < 120000) isPlaying = true;
              }
 
              if (isPlaying) {
                 state.isApiActive = true;
-                state.game_title = sum.LastGameTitle;
+                state.game_title = sum.LastGame ? sum.LastGame.Title : state.game_title;
                 
-                if (state.currentRpGameId !== sum.LastGameID || (Date.now() - state.lastApiPoll >= 30000)) {
+                if (state.currentRpGameId !== sum.LastGameID || (Date.now() - state.lastRpAchievementFetch >= 30000)) {
                    state.currentRpGameId = sum.LastGameID;
+                   state.lastRpAchievementFetch = Date.now();
                    var data = await apiFetch('API_GetGameInfoAndUserProgress.php', { u: user, g: sum.LastGameID });
                    if (data && data.Achievements) {
                       state.activeSubsets = { 0: true };
+                      var oldAchievements = state.achievements;
                       state.achievements = Object.values(data.Achievements).map(function(a, idx) {
-                         return { title: a.Title, description: a.Description, points: a.Points, unlocked: !!(a.DateEarnedHardcore || a.DateEarned), BadgeName: a.BadgeName, subset_id: 0, originalIndex: idx };
+                         var isUnlocked = !!(a.DateEarnedHardcore || a.DateEarned);
+                         var oldA = oldAchievements.find(function(o){ return o.title === a.Title; });
+                         if (oldA && !oldA.unlocked && isUnlocked) {
+                            state.recentUnlocks[a.Title] = Date.now();
+                            setTimeout(function(){ delete state.recentUnlocks[a.Title]; render(); }, 10000);
+                            fetchProfile();
+                         }
+                         return { title: a.Title, description: a.Description, points: a.Points, unlocked: isUnlocked, BadgeName: a.BadgeName, subset_id: 0, originalIndex: idx };
                       });
                    }
                 }
