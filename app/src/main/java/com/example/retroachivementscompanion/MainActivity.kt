@@ -77,10 +77,13 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private val DASHBOARD_HTML = """<html><head><style>
         body { background-color: #0F111A; color: #E0E0E0; font-family: sans-serif; padding: 0; margin: 0; overflow: hidden; }
+        
         .settings-btn { position: fixed; top: 5px; right: 5px; color: #888; cursor: pointer; z-index: 1000; padding: 4px; background: rgba(26,28,46,0.8); border-radius: 6px; border: 1px solid #2A2E45; }
         .settings-btn svg { width: 18px; height: 18px; fill: currentColor; display: block; }
+        
         .dashboard { position: fixed; top: 0; left: 0; right: 0; height: 120px; background: #1A1C2E; display: flex; flex-direction: column; padding: 8px 0 0 0; border-bottom: 4px solid #00BFA5; z-index: 100; box-sizing: border-box; transition: transform 0.4s; }
         .dashboard.hidden { transform: translateY(-100%); }
+        
         .game-title { font-size: 19px; font-weight: 800; color: #00BFA5; margin: 0 0 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; text-align: center; }
         .telemetry-row { display: flex; justify-content: space-evenly; width: 100%; }
         .column { display: flex; flex-direction: column; align-items: center; width: 25%; }
@@ -93,14 +96,18 @@ class MainActivity : AppCompatActivity() {
         .clock { font-size: 12px; font-weight: 900; color: #888; }
         .progress-bar-bg { width: 100%; height: 8px; background: #2A2E45; overflow: hidden; margin-top: auto; }
         .progress-bar-fill { height: 100%; background: #4CAF50; width: 0%; transition: width 0.5s; }
+        
         .wrapper { margin-top: 120px; height: calc(100vh - 120px); display: flex; flex-direction: column; overflow: hidden; width: 100%; transition: margin-top 0.4s, height 0.4s; }
         .wrapper.full-screen { margin-top: 0; height: 100vh; }
+        
         #pinned-achievements { flex-shrink: 0; background: #0F111A; padding: 18px 18px 0 18px; box-sizing: border-box; border-bottom: 2px solid #2A2E45; display: none; width: 100%; }
         #pinned-achievements:not(:empty) { display: block; }
         .content { flex-grow: 1; overflow-y: auto; padding: 18px; box-sizing: border-box; width: 100%; }
         #achievement-list { width: 100%; display: block; }
+        
         .subset-header { font-size: 13px; font-weight: 900; color: #00BFA5; text-transform: uppercase; margin: 15px 0 8px 0; padding-bottom: 4px; border-bottom: 1px solid #2A2E45; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center; width: 100%; }
         .subset-header.completed { color: #888; border-bottom-color: #1E2132; margin-top: 25px; }
+        
         .achievement { display: flex; align-items: flex-start; margin-bottom: 12px; padding: 12px; background: #1E2132; border-radius: 10px; border: 1px solid #2A2E45; position: relative; overflow: hidden; transition: border-color 0.3s, opacity 0.3s, transform 0.3s, box-shadow 0.3s; width: 100%; box-sizing: border-box; }
         .achievement.unlocked { border-left: 4px solid #4CAF50; background: #242938; opacity: 0.6; }
         .achievement.challenge { border: 2px solid #FFD600; background: #2A2410; }
@@ -117,6 +124,7 @@ class MainActivity : AppCompatActivity() {
         .badge-progression { background: #00BFA5; }
         .badge-win { background: #FFD600; }
         .badge-challenge { border: 1px solid #FFD600; background: rgba(255, 214, 0, 0.2); color: #FFD600; }
+        
         .profile-banner { display: flex; padding: 15px; background: #1A1C2E; border: 1px solid #00BFA5; border-radius: 12px; margin-bottom: 15px; width: 100%; box-sizing: border-box; gap: 15px; }
         .profile-left { display: flex; align-items: center; gap: 15px; flex: 1; }
         .avatar { width: 56px; height: 56px; border-radius: 50%; border: 2px solid #00BFA5; flex-shrink: 0; }
@@ -125,6 +133,7 @@ class MainActivity : AppCompatActivity() {
         .profile-stats { font-size: 11px; color: #888; }
         .profile-stats strong { color: #00BFA5; }
         .retropoints-text { color: #FFD600; }
+        
         .profile-right { display: flex; flex-direction: column; justify-content: center; align-items: flex-end; padding-left: 15px; border-left: 1px solid #2A2E45; gap: 4px; min-width: 130px; }
         .award-stat { display: flex; align-items: center; gap: 6px; font-size: 9px; font-weight: 900; text-transform: uppercase; color: #888; }
         .award-stat span { font-size: 13px; color: #FFF; min-width: 18px; text-align: right; }
@@ -132,8 +141,10 @@ class MainActivity : AppCompatActivity() {
         .circle-beaten { background: #FFF; box-shadow: 0 0 5px #FFF; }
         .circle-mastered { background: #FFD600; box-shadow: 0 0 5px #FFD600; }
         .circle-soft-beaten { border: 1px solid #FFF; }
+
         .aotw-card { background: linear-gradient(135deg, #1A1C2E 0%, #2A2E45 100%); border: 2px solid #FFD600; border-radius: 10px; padding: 12px; margin-bottom: 15px; position: relative; width: 100%; box-sizing: border-box; }
         .aotw-label { position: absolute; top: -10px; left: 10px; background: #FFD600; color: #000; font-size: 9px; font-weight: 900; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; }
+        
         .game-card { padding: 15px; background: #1E2132; border-radius: 10px; border: 1px solid #2A2E45; margin-bottom: 12px; cursor: pointer; width: 100%; box-sizing: border-box; }
         .game-card-header { display: flex; align-items: flex-start; width: 100%; }
         .game-icon { width: 56px; height: 56px; margin-right: 15px; border-radius: 6px; flex-shrink: 0; }
@@ -146,6 +157,7 @@ class MainActivity : AppCompatActivity() {
         .game-progress-bar-fill { height: 100%; background: #00BFA5; }
         .expanded-achievements { margin-top: 15px; padding-top: 15px; border-top: 1px solid #2A2E45; display: none; }
         .expanded-achievements.active { display: block; }
+        
         #modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2000; align-items: center; justify-content: center; }
         .modal { background: #1A1C2E; width: 90%; max-width: 450px; border: 1px solid #00BFA5; border-radius: 12px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: flex; flex-direction: column; max-height: 90vh; }
         .input-group input { width: 100%; background: #0F111A; border: 1px solid #2A2E45; color: #FFF; padding: 10px; border-radius: 6px; box-sizing: border-box; }
@@ -157,7 +169,7 @@ class MainActivity : AppCompatActivity() {
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-thumb { background: #2A2E45; border-radius: 10px; }
         </style><script>
-        var state = { game_title: 'No Game Running', fps: '--', cpu_util: '--%', gpu_util: '--%', battery: '--%', temp_cpu: '--°', temp_gpu: '--°', frametime: '--ms', power_w: '--W', achievements: [], activeSubsets: {}, showHeaders: false, hideUnlocked: false, recentUnlocks: {}, startTime: Date.now(), lastPacketTime: 0, profile: null, recentGames: [], aotw: null, awardCounts: { beaten: 0, mastered: 0, softBeaten: 0, softCompleted: 0 }, expandedGame: null, gameAchievements: {}, isLoading: false, profilePicUrl: '' };
+        var state = { game_title: 'No Game Running', fps: '--', cpu_util: '--%', gpu_util: '--%', battery: '--%', temp_cpu: '--°', temp_gpu: '--°', frametime: '--ms', power_w: '--W', achievements: [], activeSubsets: {}, showHeaders: false, hideUnlocked: false, recentUnlocks: {}, startTime: Date.now(), lastPacketTime: 0, profile: null, recentGames: [], aotw: null, awardCounts: { beaten: 0, mastered: 0, softBeaten: 0, softCompleted: 0 }, expandedGame: null, gameAchievements: {}, isLoading: false, gameMetadata: {}, profilePicUrl: '' };
         var nextGlobalIndex = 0;
         async function apiFetch(endpoint, params) {
           var user = window.localStorage.getItem('ra_user'); var key = window.localStorage.getItem('ra_key');
@@ -173,10 +185,14 @@ class MainActivity : AppCompatActivity() {
           if (sum && sum.User) {
             state.profile = sum;
             state.profilePicUrl = 'https://retroachievements.org' + sum.UserPic + '?t=' + Date.now();
-            state.awardCounts = { beaten: sum.BeatenHardcoreAwardsCount || 0, softBeaten: sum.BeatenSoftcoreAwardsCount || 0, mastered: sum.MasteryAwardsCount || 0, softCompleted: sum.CompletionAwardsCount || 0 };
           }
           var games = await apiFetch('API_GetUserRecentlyPlayedGames.php', { u: user, c: 5 }); if (Array.isArray(games)) state.recentGames = games;
           var aotw = await apiFetch('API_GetAchievementOfTheWeek.php'); if (aotw) state.aotw = aotw;
+          
+          var awards = await apiFetch('API_GetUserAwards.php', { u: user });
+          if (awards) {
+            state.awardCounts = { beaten: awards.BeatenHardcoreAwardsCount || 0, softBeaten: awards.BeatenSoftcoreAwardsCount || 0, mastered: awards.MasteryAwardsCount || 0, softCompleted: awards.CompletionAwardsCount || 0 };
+          }
           state.isLoading = false; render();
         }
         async function toggleGameExpansion(gameId) {
@@ -297,7 +313,7 @@ class MainActivity : AppCompatActivity() {
                    html += '</div></div>';
                  });
                }
-             } else if (state.isLoading) { html = '<div style="text-align:center; padding: 50px; color:#888;">Syncing...</div>'; }
+             } else if (state.isLoading) { html = '<div style="text-align:center; padding: 50px; color:#888;">Syncing profile...</div>'; }
              else { html = '<div style="text-align:center; padding: 50px; color:#888;">Enter credentials in settings.</div>'; }
              document.getElementById('achievement-list').innerHTML = html;
              return;
@@ -308,21 +324,21 @@ class MainActivity : AppCompatActivity() {
           var pinned = finalVis.filter(function(a){return a.is_challenge || state.recentUnlocks[a.title];}).sort(function(a,b){return a.originalIndex - b.originalIndex;});
           var remaining = finalVis.filter(function(a){return !a.is_challenge && !state.recentUnlocks[a.title];}).sort(function(a,b){return a.originalIndex - b.originalIndex;});
           document.getElementById('pinned-achievements').innerHTML = pinned.map(function(a){return getAchievementHtml(a);}).join('');
-          var mainHtml = ''; var subsets = {};
+          var subsets = {};
           remaining.filter(function(a){return !a.unlocked;}).forEach(function(a){
             var id = a.subset_id || 0; if(!subsets[id]) subsets[id] = { title: a.subset_title || 'Base Set', items: [] };
             subsets[id].items.push(a);
           });
           Object.keys(subsets).sort(function(a,b){return a-b;}).forEach(function(id){
-            if (state.showHeaders) mainHtml += '<div class="subset-header"><span>' + subsets[id].title + '</span></div>';
-            mainHtml += subsets[id].items.map(function(a){return getAchievementHtml(a);}).join('');
+            if (state.showHeaders) html += '<div class="subset-header"><span>' + subsets[id].title + '</span></div>';
+            html += subsets[id].items.map(function(a){return getAchievementHtml(a);}).join('');
           });
           var unlocked = remaining.filter(function(a){return a.unlocked;});
           if (!state.hideUnlocked && unlocked.length > 0) {
-            if (state.showHeaders) mainHtml += '<div class="subset-header completed"><span>Completed</span></div>';
-            mainHtml += unlocked.map(function(a){return getAchievementHtml(a);}).join('');
+            if (state.showHeaders) html += '<div class="subset-header completed"><span>Completed</span></div>';
+            html += unlocked.map(function(a){return getAchievementHtml(a);}).join('');
           }
-          document.getElementById('achievement-list').innerHTML = mainHtml;
+          document.getElementById('achievement-list').innerHTML = html;
           var tCnt = vis.length; var uCnt = vis.filter(function(i){return i.unlocked;}).length;
           var per = tCnt > 0 ? Math.round((uCnt / tCnt) * 100) : 0;
           document.getElementById('progress-text').innerText = uCnt + ' / ' + tCnt + ' (' + per + '%)';
