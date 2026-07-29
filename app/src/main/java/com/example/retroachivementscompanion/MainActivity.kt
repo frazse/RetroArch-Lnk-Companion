@@ -16,6 +16,7 @@ class MainActivity : AppCompatActivity() {
     private var webView: WebView? = null
     private var running = true
     private var socket: DatagramSocket? = null
+    private var telemetryReader: TelemetryReader? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,7 +31,10 @@ class MainActivity : AppCompatActivity() {
         wv.setBackgroundColor(Color.BLACK)
         wv.addJavascriptInterface(WebAppInterface(), "Android")
         wv.loadDataWithBaseURL("https://retroarch.dual", DASHBOARD_HTML, "text/html", "UTF-8", null)
+        
+        telemetryReader = TelemetryReader(this)
         startUdpListener()
+        startTelemetryPoller()
     }
 
     private fun setPassiveMode(passive: Boolean) {
@@ -59,6 +63,40 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) { if (running) Log.e("RetroArchLnk", "Socket error", e) }
             finally { socket?.close(); socket = null }
+        }.start()
+    }
+
+    private fun startTelemetryPoller() {
+        Thread {
+            while (running) {
+                try {
+                    val s = telemetryReader?.poll()
+                    if (s != null) {
+                        val json = buildString {
+                           append("{")
+                           val fields = mutableListOf<String>()
+                           s.cpu_util?.let { fields.add("\"cpu_util\":$it") }
+                           s.gpu_util?.let { fields.add("\"gpu_util\":$it") }
+                           s.temp_cpu?.let { fields.add("\"temp_cpu\":$it") }
+                           s.temp_gpu?.let { fields.add("\"temp_gpu\":$it") }
+                           s.battery?.let { fields.add("\"battery\":$it") }
+                           s.temp_battery?.let { fields.add("\"temp_battery\":$it") }
+                           s.fps?.let { fields.add("\"fps\":$it") }
+                           s.frametime?.let { fields.add("\"frametime\":$it") }
+                           append(fields.joinToString(","))
+                           append("}")
+                        }
+                        if (json.length > 2) {
+                           runOnUiThread {
+                               if (running && !isFinishing && !isDestroyed) {
+                                   webView?.evaluateJavascript("updateDeviceStats($json);", null)
+                               }
+                           }
+                        }
+                    }
+                } catch (e: Exception) { Log.e("Telemetry", "Poll error", e) }
+                Thread.sleep(2000)
+            }
         }.start()
     }
 
@@ -158,7 +196,7 @@ class MainActivity : AppCompatActivity() {
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-thumb { background: #2A2E45; border-radius: 10px; }
         </style><script>
-        var state = { game_title: 'No Game Running', fps: '--', cpu_util: '--%', gpu_util: '--%', battery: '--%', temp_cpu: '--°', temp_gpu: '--°', frametime: '--ms', power_w: '--W', achievements: [], activeSubsets: {}, showHeaders: false, hideUnlocked: false, recentUnlocks: {}, startTime: Date.now(), lastPacketTime: 0, profile: null, recentGames: [], aotw: null, awardCounts: { beaten: 0, mastered: 0, softBeaten: 0, softCompleted: 0 }, expandedGame: null, gameAchievements: {}, isLoading: false, profilePicUrl: '', isApiActive: false, lastApiPoll: 0, currentRpGameId: null, lastRpAchievementFetch: 0 };
+        var state = { game_title: 'No Game Running', fps: '--', cpu_util: '--%', gpu_util: '--%', battery: '--%', temp_cpu: '--°', temp_gpu: '--°', frametime: '--ms', power_w: '--W', achievements: [], activeSubsets: {}, showHeaders: false, hideUnlocked: false, recentUnlocks: {}, startTime: Date.now(), lastPacketTime: 0, profile: null, recentGames: [], aotw: null, awardCounts: { beaten: 0, mastered: 0, softBeaten: 0, softCompleted: 0 }, expandedGame: null, gameAchievements: {}, isLoading: false, gameMetadata: {}, profilePicUrl: '', isApiActive: false, lastApiPoll: 0, currentRpGameId: null, lastRpAchievementFetch: 0 };
         var nextGlobalIndex = 0;
         
         async function apiFetch(endpoint, params) {
@@ -232,6 +270,18 @@ class MainActivity : AppCompatActivity() {
           render();
         }
 
+        function updateDeviceStats(data) {
+          if (data.cpu_util !== undefined) state.cpu_util = data.cpu_util + '%';
+          if (data.gpu_util !== undefined) state.gpu_util = data.gpu_util + '%';
+          if (data.temp_cpu !== undefined) state.temp_cpu = data.temp_cpu + '°';
+          if (data.temp_gpu !== undefined) state.temp_gpu = data.temp_gpu + '°';
+          if (data.battery !== undefined) state.battery = data.battery + '%';
+          if (data.temp_battery !== undefined) state.power_w = Math.round(data.temp_battery / 10) + '°';
+          if (data.fps !== undefined) state.fps = data.fps;
+          if (data.frametime !== undefined) state.frametime = data.frametime.toFixed(1) + 'ms';
+          render();
+        }
+
         async function toggleGameExpansion(gameId) {
           if (state.expandedGame === gameId) { state.expandedGame = null; } else {
             state.expandedGame = gameId;
@@ -254,7 +304,7 @@ class MainActivity : AppCompatActivity() {
           if (isGeneric) { state.lastPacketTime = 0; render(); return; }
           state.lastPacketTime = Date.now();
           if (newData.game_title !== state.game_title) {
-            var old = state; state = { game_title: newData.game_title, fps: '--', cpu_util: '--%', gpu_util: '--%', battery: '--%', temp_cpu: '--°', temp_gpu: '--°', frametime: '--ms', power_w: '--W', achievements: [], activeSubsets: {}, showHeaders: old.showHeaders, hideUnlocked: old.hideUnlocked, recentUnlocks: {}, startTime: Date.now(), lastPacketTime: Date.now(), profile: old.profile, recentGames: old.recentGames, awardCounts: old.awardCounts, aotw: old.aotw, expandedGame: null, gameAchievements: {}, isLoading: false, gameMetadata: {}, profilePicUrl: old.profilePicUrl, isApiActive: false, lastApiPoll: old.lastApiPoll, currentRpGameId: null };
+            var old = state; state = { game_title: newData.game_title, fps: '--', cpu_util: '--%', gpu_util: '--%', battery: '--%', temp_cpu: '--°', temp_gpu: '--°', frametime: '--ms', power_w: '--W', achievements: [], activeSubsets: {}, showHeaders: old.showHeaders, hideUnlocked: old.hideUnlocked, recentUnlocks: {}, startTime: Date.now(), lastPacketTime: Date.now(), profile: old.profile, recentGames: old.recentGames, awardCounts: old.awardCounts, aotw: old.aotw, expandedGame: null, gameAchievements: {}, isLoading: false, gameMetadata: {}, profilePicUrl: old.profilePicUrl, isApiActive: false, lastApiPoll: old.lastApiPoll, currentRpGameId: null, lastRpAchievementFetch: old.lastRpAchievementFetch };
           }
           if(newData.fps !== undefined) state.fps = Math.round(newData.fps);
           if(newData.frametime !== undefined) state.frametime = newData.frametime.toFixed(1) + 'ms';
@@ -313,11 +363,25 @@ class MainActivity : AppCompatActivity() {
           var hasGame = (Date.now() - state.lastPacketTime < 10000) || state.isApiActive; 
           var dash = document.querySelector('.dashboard');
           var wrap = document.querySelector('.wrapper');
-          var tele = document.querySelector('.telemetry-grid');
+          var teleRows = document.querySelectorAll('.telemetry-row');
           
           if (hasGame) {
              dash.classList.remove('hidden'); wrap.classList.remove('full-screen');
-             if (state.isApiActive) tele.style.display = 'none'; else tele.style.display = 'flex';
+             teleRows[0].style.display = 'flex'; teleRows[1].style.display = 'flex';
+             
+             var frameCol = document.getElementById('frametime').parentElement;
+             var cpuCol = document.getElementById('cpu_util').parentElement;
+             var gpuCol = document.getElementById('gpu_util').parentElement;
+             var battCol = document.getElementById('battery').parentElement;
+             
+             var frameLabel = document.querySelectorAll('.telemetry-row:nth-child(2) .label')[0];
+             var cpuLabel = document.querySelectorAll('.telemetry-row:nth-child(2) .label')[1];
+             var gpuLabel = document.querySelectorAll('.telemetry-row:nth-child(2) .label')[2];
+             var battLabel = document.querySelectorAll('.telemetry-row:nth-child(2) .label')[3];
+
+             // Show all columns, just let state handle values
+             [frameCol, cpuCol, gpuCol, battCol, frameLabel, cpuLabel, gpuLabel, battLabel].forEach(el => el.style.visibility = 'visible');
+
              document.getElementById('game-title').innerText = state.game_title;
              document.getElementById('fps').innerText = state.fps; document.getElementById('cpu_util').innerText = state.cpu_util; document.getElementById('gpu_util').innerText = state.gpu_util; document.getElementById('battery').innerText = state.battery;
              document.getElementById('temp_cpu').innerText = state.temp_cpu; document.getElementById('temp_gpu').innerText = state.temp_gpu; document.getElementById('frametime').innerText = state.frametime; document.getElementById('power_w').innerText = state.power_w;
@@ -360,7 +424,7 @@ class MainActivity : AppCompatActivity() {
                    html += '</div></div>';
                  });
                }
-             } else if (state.isLoading) { html = '<div style="text-align:center; padding: 50px; color:#888;">Syncing profile...</div>'; }
+             } else if (state.isLoading) { html = '<div style="text-align:center; padding: 50px; color:#888;">Syncing...</div>'; }
              else { html = '<div style="text-align:center; padding: 50px; color:#888;">Enter credentials in settings.</div>'; }
              document.getElementById('achievement-list').innerHTML = html;
              return;
