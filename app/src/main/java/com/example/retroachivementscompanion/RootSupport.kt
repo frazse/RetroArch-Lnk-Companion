@@ -1,6 +1,8 @@
 package com.example.retroachivementscompanion
 
+import java.io.File
 import java.util.concurrent.locks.ReentrantLock
+import android.content.Context
 
 object RootSupport {
     private val lock = ReentrantLock()
@@ -11,6 +13,21 @@ object RootSupport {
             RootExec.executeAsRoot(command).getOrNull()
         } finally {
             lock.unlock()
+        }
+    }
+
+    fun runGeneratedScript(context: Context, scriptName: String, scriptContents: String): String? {
+        val scriptsDir = File(context.filesDir, "root-scripts")
+        if (!scriptsDir.exists()) scriptsDir.mkdirs()
+        
+        val scriptFile = File(scriptsDir, scriptName)
+        try {
+            scriptFile.writeText(scriptContents)
+            scriptFile.setReadable(true, false)
+            scriptFile.setExecutable(true, false)
+            return runRootCommand("sh ${scriptFile.absolutePath}")
+        } catch (e: Exception) {
+            return null
         }
     }
 }
