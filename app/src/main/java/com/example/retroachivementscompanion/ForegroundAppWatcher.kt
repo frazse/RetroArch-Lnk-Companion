@@ -27,7 +27,12 @@ class ForegroundAppWatcher(
                         lastState = false
                     }
                 }
-                Thread.sleep(1500)
+                
+                // PERFORMANCE OPTIMIZATION:
+                // If HUD is inactive, we poll much slower (3s) to save battery.
+                // If HUD is active, we poll at 1.5s to ensure quick cleanup.
+                val sleepTime = if (lastState) 1500L else 3000L
+                Thread.sleep(sleepTime)
             }
         }.start()
     }
@@ -55,7 +60,6 @@ class ForegroundAppWatcher(
 
     private fun checkForeground() {
         val now = System.currentTimeMillis()
-        // Query daily stats for the last 30 seconds to find the top app
         val stats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, now - 30000, now)
         if (stats == null || stats.isEmpty()) return
 

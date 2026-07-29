@@ -10,6 +10,7 @@ import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.appcompat.app.AppCompatActivity
+import com.example.retroachivementscompanion.BuildConfig
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 
@@ -24,6 +25,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (BuildConfig.DEBUG) {
+            WebView.setWebContentsDebuggingEnabled(true)
+        }
         setPassiveMode(true)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val wv = WebView(this)
@@ -123,7 +127,12 @@ class MainActivity : AppCompatActivity() {
                     s.receive(packet)
                     lastUdpTime = System.currentTimeMillis()
                     val json = String(packet.data, 0, packet.length)
-                    runOnUiThread { if (running && !isFinishing && !isDestroyed) webView?.evaluateJavascript("update($json);", null) }
+                    
+                    // Only process/forward UDP packets if we are actually showing the HUD
+                    // This avoids redundant WebView calls when app is idle.
+                    if (isLocalAppActive || (System.currentTimeMillis() - lastUdpTime < 5000)) {
+                        runOnUiThread { if (running && !isFinishing && !isDestroyed) webView?.evaluateJavascript("update($json);", null) }
+                    }
                 }
             } catch (e: Exception) { if (running) Log.e("RetroArchLnk", "Socket error", e) }
             finally { socket?.close(); socket = null }
@@ -134,7 +143,12 @@ class MainActivity : AppCompatActivity() {
         Thread {
             while (running) {
                 try {
-                    if (System.currentTimeMillis() - lastUdpTime > 10000) {
+                    // DEEP SLEEP MODE:
+                    // If no game is locally active and no recent UDP stream, completely skip ALL work.
+                    // This stops expensive awk scripts and sysfs reads.
+                    val isUdpActive = (System.currentTimeMillis() - lastUdpTime < 10000)
+                    
+                    if (isLocalAppActive && !isUdpActive) {
                         val s = telemetryReader?.poll()
                         if (s != null) {
                             val json = buildString {
@@ -160,9 +174,15 @@ class MainActivity : AppCompatActivity() {
                                }
                             }
                         }
+                    } else if (!isLocalAppActive && !isUdpActive) {
+                        // In deep sleep, we poll very slowly just to keep the flag check alive
+                        // without performing any sysfs/shell tasks.
                     }
                 } catch (e: Exception) { Log.e("Telemetry", "Poll error", e) }
-                Thread.sleep(2000)
+                
+                // Adaptive Sleep: 2s when active, 5s when idle.
+                val sleepTime = if (isLocalAppActive) 2000L else 5000L
+                Thread.sleep(sleepTime)
             }
         }.start()
     }
@@ -200,7 +220,7 @@ class MainActivity : AppCompatActivity() {
         .clock { font-size: 12px; font-weight: 900; color: #888; }
         .progress-bar-bg { width: 100%; height: 8px; background: #2A2E45; overflow: hidden; }
         .progress-bar-fill { height: 100%; background: #4CAF50; width: 0%; transition: width 0.5s; }
-        .wrapper { margin-top: 120px; height: calc(100vh - 120px); display: flex; flex-direction: column; overflow: hidden; width: 100%; transition: margin-top: 0.4s, height 0.4s; }
+        .wrapper { margin-top: 120px; height: calc(100vh - 120px); display: flex; flex-direction: column; overflow: hidden; width: 100%; transition: margin-top 0.4s, height 0.4s; }
         .wrapper.full-screen { margin-top: 0; height: 100vh; }
         #pinned-achievements { flex-shrink: 0; background: #0F111A; padding: 18px 18px 0 18px; box-sizing: border-box; border-bottom: 2px solid #2A2E45; display: none; }
         #pinned-achievements:not(:empty) { display: block; }
@@ -300,15 +320,32 @@ class MainActivity : AppCompatActivity() {
             state.profilePicUrl = 'https://retroachievements.org' + sum.UserPic + '?t=' + Date.now();
             state.lastProfileSync = Date.now();
           }
+          
           var awards = await apiFetch('API_GetUserAwards.php', { u: user });
-          if (awards) {
-            state.awardCounts = { 
-               beaten: awards.BeatenHardcoreAwardsCount || 0, 
-               softBeaten: awards.BeatenSoftcoreAwardsCount || 0, 
-               mastered: awards.MasteryAwardsCount || 0, 
-               softCompleted: awards.CompletionAwardsCount || 0 
-            };
+          var awards = await apiFetch('API_GetUserAwards.php', { u: user });
+          var rawAwards = awards && awards.VisibleUserAwards;
+          if (rawAwards && typeof rawAwards === 'object') {
+            var awardsList = Array.isArray(rawAwards) ? rawAwards : Object.values(rawAwards);
+            var bestPerGame = {}; // gameId -> { tier: 'beaten'|'mastered', hardcore: bool }
+            var tierRank = { beaten: 1, mastered: 2 };
+            awardsList.forEach(function(a) {
+              var tier = a.AwardType === 'Mastery/Completion' ? 'mastered' : (a.AwardType === 'Game Beaten' ? 'beaten' : null);
+              if (!tier) return; // skip non-game awards (site awards, points yield, etc.)
+              var gameId = a.AwardData;
+              var hardcore = Number(a.AwardDataExtra) === 1;
+              var existing = bestPerGame[gameId];
+              if (!existing || tierRank[tier] > tierRank[existing.tier]) {
+                bestPerGame[gameId] = { tier: tier, hardcore: hardcore };
+              }
+            });
+            var counts = { beaten: 0, softBeaten: 0, mastered: 0, softCompleted: 0 };
+            Object.values(bestPerGame).forEach(function(g) {
+              if (g.tier === 'mastered') { if (g.hardcore) counts.mastered++; else counts.softCompleted++; }
+              else { if (g.hardcore) counts.beaten++; else counts.softBeaten++; }
+            });
+            state.awardCounts = counts;
           }
+          
           var games = await apiFetch('API_GetUserRecentlyPlayedGames.php', { u: user, c: 5 }); if (Array.isArray(games)) state.recentGames = games;
           var aotw = await apiFetch('API_GetAchievementOfTheWeek.php'); if (aotw) state.aotw = aotw;
           state.isLoading = false; render();
@@ -499,10 +536,9 @@ class MainActivity : AppCompatActivity() {
              document.getElementById('fps').innerText = state.fps; document.getElementById('cpu_util').innerText = state.cpu_util; document.getElementById('gpu_util').innerText = state.gpu_util; document.getElementById('battery').innerText = state.battery;
              document.getElementById('temp_cpu').innerText = state.temp_cpu; document.getElementById('temp_gpu').innerText = state.temp_gpu; document.getElementById('frametime').innerText = state.frametime; document.getElementById('power_w').innerText = state.power_w;
 
-             // HUD-only Mastered logic
+             // Mastered! Badge Logic (In-Game Only)
              var vis = state.achievements.filter(function(a){return state.activeSubsets[a.subset_id || 0];});
              var allUnlocked = vis.length > 0 && vis.every(function(a){return a.unlocked;});
-             
              var finalVis = state.hideUnlocked ? vis.filter(function(a){return !a.unlocked || state.recentUnlocks[a.title];}) : vis;
              var pinned = finalVis.filter(function(a){return a.is_challenge || state.recentUnlocks[a.title];}).sort(function(a,b){return a.originalIndex - b.originalIndex;});
              
@@ -672,6 +708,7 @@ class MainActivity : AppCompatActivity() {
         <div id="modal-overlay" onclick="toggleSettings(false)"><div class="modal" onclick="event.stopPropagation()">
           <div class="modal-title">Settings</div>
           <div class="modal-scroll">
+            <div id="perm-container"></div>
             <div class="input-group"><label>RA Username</label><input type="text" id="input-user"></div>
             <div class="input-group"><label>API Key</label><input type="password" id="input-key"></div>
             <div class="modal-divider"></div>
