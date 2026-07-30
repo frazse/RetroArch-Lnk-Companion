@@ -2,6 +2,7 @@ package com.example.retroachivementscompanion
 
 import android.content.Context
 import android.os.BatteryManager
+import android.util.Log
 import java.io.File
 import java.util.*
 import kotlin.math.abs
@@ -29,28 +30,6 @@ class TelemetryReader(private val context: Context) {
 
     private var timeStatsEnabled = false
     private var lastFpsPoll: Long = 0
-    private val fpsRegex = Regex("""FR\s+(\d+)\s+AF\s+([0-9.]+)\s+WORST\s+(\d+)\s+SLOW\s+(\d+)\s+LF\s+(\d+)\s+LAF\s+([0-9.]+)""")
-
-    private val fpsScript = """
-        dumpsys SurfaceFlinger --timestats -dump -maxlayers 16 2>/dev/null | awk '
-            function commitLayer(){ if((lf+0)>(blf+0) && lname !~ /= none/){ blf=lf; blaf=laf } }
-            BEGIN{ g=1 }
-            /layerName =/ { commitLayer(); g=0; lf=0; laf=0; lname=${'$'}0 }
-            g==1 && ${'$'}1=="totalFrames" { gf=${'$'}3 }
-            g==1 && ${'$'}1=="displayRefreshRate" { rr=${'$'}3 }
-            g==1 && /presentToPresent histogram/ { gh=1; next }
-            g==1 && gh==1 { gh=0; for(i=1;i<=NF;i++){ split(${'$'}i,a,"="); ms=a[1]+0; c=a[2]+0; if(c>0 && ms<100){ sc+=c; sm+=ms*c; if(ms>worst)worst=ms; if(ms>=33)slow+=c } } }
-            g==0 && ${'$'}1=="totalFrames" { lf=${'$'}3 }
-            g==0 && ${'$'}1=="averageFPS" { laf=${'$'}3 }
-            END{
-                commitLayer();
-                fps=(sm>0)?(1000.0*sc/sm):0;
-                if(rr>0 && fps>rr) fps=rr;
-                printf "FR %d AF %.2f WORST %d SLOW %d LF %d LAF %.2f\n", gf+0, fps, worst+0, slow+0, blf+0, blaf+0
-            }
-        '
-        dumpsys SurfaceFlinger --timestats -clear >/dev/null 2>&1
-    """.trimIndent()
 
     init {
         resolveZones()
@@ -194,32 +173,76 @@ class TelemetryReader(private val context: Context) {
 
     private fun pollFps(): Pair<Int?, Double?> {
         if (!timeStatsEnabled) {
-            val res = RootSupport.runRootCommand("dumpsys SurfaceFlinger --timestats -enable >/dev/null 2>&1; dumpsys SurfaceFlinger --timestats -clear >/dev/null 2>&1; echo OK")
-            if (res == "OK") timeStatsEnabled = true
+            val enableRes = RootSupport.runRootCommand("dumpsys SurfaceFlinger --timestats -enable")
+            val clearRes = RootSupport.runRootCommand("dumpsys SurfaceFlinger --timestats -clear")
+            Log.d("TelemetryFps", "enable=$enableRes clear=$clearRes")
+            timeStatsEnabled = true
         }
 
         val now = System.currentTimeMillis()
         if (now - lastFpsPoll < 800) return Pair(null, null)
         lastFpsPoll = now
 
-        val out = RootSupport.runGeneratedScript(context, "poll_fps.sh", fpsScript) ?: return Pair(null, null)
-        val match = fpsRegex.find(out) ?: return Pair(null, null)
-
-        val fr = match.groupValues[1].toInt()
-        val af = match.groupValues[2].toDouble()
-        val lf = match.groupValues[5].toInt()
-        val laf = match.groupValues[6].toDouble()
-
-        var fps: Double? = null
-        if (fr > 0 && af in 1.0..240.0) {
-            fps = af
-        } else if (lf > 0 && laf in 1.0..240.0) {
-            fps = laf
+        val out = RootSupport.runRootCommand("dumpsys SurfaceFlinger --timestats -dump -maxlayers 16")
+        RootSupport.runRootCommand("dumpsys SurfaceFlinger --timestats -clear")
+        if (out == null) {
+            return Pair(null, null)
         }
 
-        if (fps == null) return Pair(null, null)
-
-        val ft = 1000.0 / fps
+        val result = parseTimestatsDump(out)
+        if (result == null) {
+            return Pair(null, null)
+        }
+        val (fps, ft) = result
         return Pair(fps.toInt(), Math.round(ft * 10.0) / 10.0)
+    }
+
+    private fun parseTimestatsDump(dump: String): Pair<Double, Double>? {
+        var gf = 0L; var rr = 0.0
+        var sc = 0L; var sm = 0.0; var worst = 0; var slow = 0L
+        var lf = 0L; var laf = 0.0
+        var blf = 0L; var blaf = 0.0
+        var inGlobal = true
+        var inHistogram = false
+
+        for (line in dump.lineSequence()) {
+            val t = line.trim()
+            if (t.startsWith("layerName =")) {
+                if (lf > blf) { blf = lf; blaf = laf }
+                inGlobal = false; lf = 0; laf = 0.0
+                continue
+            }
+            if (inGlobal && t.startsWith("totalFrames")) { gf = t.substringAfter("=").trim().toLongOrNull() ?: gf; continue }
+            if (inGlobal && t.startsWith("displayRefreshRate")) { rr = t.substringAfter("=").trim().toDoubleOrNull() ?: rr; continue }
+            if (inGlobal && t.contains("presentToPresent histogram")) { inHistogram = true; continue }
+            if (inGlobal && inHistogram) {
+                inHistogram = false
+                for (bucket in t.split(Regex("\\s+"))) {
+                    val parts = bucket.split("=")
+                    if (parts.size != 2) continue
+                    val ms = parts[0].toDoubleOrNull() ?: continue
+                    val c = parts[1].toLongOrNull() ?: continue
+                    if (c > 0 && ms < 100) {
+                        sc += c; sm += ms * c
+                        if (ms > worst) worst = ms.toInt()
+                        if (ms >= 33) slow += c
+                    }
+                }
+                continue
+            }
+            if (!inGlobal && t.startsWith("totalFrames")) { lf = t.substringAfter("=").trim().toLongOrNull() ?: lf; continue }
+            if (!inGlobal && t.startsWith("averageFPS")) { laf = t.substringAfter("=").trim().toDoubleOrNull() ?: laf; continue }
+        }
+        if (lf > blf) { blf = lf; blaf = laf }
+
+        var fps = if (sm > 0) 1000.0 * sc / sm else 0.0
+        if (rr > 0 && fps > rr) fps = rr
+
+        val chosenFps = when {
+            gf > 0 && fps in 1.0..240.0 -> fps
+            blf > 0 && blaf in 1.0..240.0 -> blaf
+            else -> return null
+        }
+        return Pair(chosenFps, 1000.0 / chosenFps)
     }
 }

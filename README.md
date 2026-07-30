@@ -10,38 +10,35 @@ A high-performance Android "Passive HUD" companion for RetroArch and standalone 
 
 ### 2. Privileged "Rootless" Telemetry
 Ported from performance tools to provide deep system stats without traditional root:
-- **Global FPS & Frametime**: High-precision calculation using `dumpsys SurfaceFlinger` hardware timestamps.
+- **Global FPS & Frametime**: High-precision calculation using `dumpsys SurfaceFlinger` with native Kotlin parsing for maximum performance.
 - **Power Monitoring**: Real-time power draw display in **Watts (W)**.
 - **System Load**: Per-core CPU utilization, GPU load, and temperatures.
 
 ### 3. Battery-First Architecture
 - **Deep Sleep Mode**: The entire telemetry engine (scripts, file reads, socket processing) completely shuts down when no game is active.
 - **Adaptive Throttling**: The background app watcher slows down when idle to minimize CPU wake-ups.
-- **UDP Priority Lock**: High-speed UDP streams automatically suppress slow periodic polling to eliminate jitter and redundant processing.
+- **UDP Priority Lock**: High-speed UDP streams automatically suppress slow periodic polling for 10 seconds to eliminate jitter.
 
 ### 4. RetroAchievements Integration
 - **Career Dashboard**: Real-time display of Points, Rank, and Award counts (Beaten/Mastered) synced directly with your profile.
-- **Dynamic HUD**: 
-    - Automatically pins Missable, Progression, and Win Condition achievements.
-    - **"Mastered!" 🏆 Badge**: A permanent status badge that appears at the top of the HUD when playing 100% completed games.
-    - **Session Hysteresis**: HUD remains stable during API lag and cleans up instantly upon game exit.
+- **Mastery Experience**: 
+    - **"Mastered!" 👑 HUD Badge**: A permanent status badge that appears at the top of the HUD when playing 100% completed games.
+    - **Premium Styling**: Mastered games in your history feature a golden border, gradient background, and glow to match the site's prestige.
+- **Achievement of the Week**: Real-time countdown ("Ends in X days") and unlock status (✅ indicator) synced with global AOTW.
 
-### 5. True "Passive" HUD
-Designed to be completely invisible to the OS input system:
-- **`FLAG_NOT_FOCUSABLE`**: Prevents the window from stealing focus or intercepting controller input.
-- **Input Passthrough**: Overridden motion and key events ensure emulators receive 100% of input data.
+### 5. True "Passive" HUD & Security
+- **Passive Mode**: Prevents the window from stealing focus or intercepting controller input.
+- **Logout & Privacy**: Added a secure Logout button in settings with a confirmation prompt to clear all local credentials.
+- **Remote Debugging**: WebView debugging enabled for Debug builds via `chrome://inspect`.
 
 ## Setup & Usage
 
 1. **Install**: Build and deploy the APK to your Android device (Odin 2, RP4Pro, etc.).
 2. **Usage Access**: Open Settings in the app and tap the red banner to grant "Usage Access" (required for automatic HUD activation).
-3. **Trigger Apps**: Select your emulators in the "Trigger Apps" dropdown to enable automatic Rich Presence sync.
+3. **Trigger Apps**: Select your emulators in the "Trigger Apps" dropdown.
 4. **RetroArch**: Configure your RetroArch Lnk setup to send UDP packets to the device IP on port `55432`.
 
 ## Development
-
-### Remote Debugging
-WebView remote debugging is enabled for **Debug** builds. Connect your device and navigate to `chrome://inspect` on your PC to debug the dashboard JS/CSS.
 
 ### Build
 ```bash

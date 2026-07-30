@@ -229,7 +229,7 @@ class MainActivity : AppCompatActivity() {
         .subset-header { font-size: 13px; font-weight: 900; color: #00BFA5; text-transform: uppercase; margin: 15px 0 8px 0; padding-bottom: 4px; border-bottom: 1px solid #2A2E45; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center; width: 100%; }
         .subset-header.completed { color: #888; border-bottom-color: #1E2132; margin-top: 25px; }
         .achievement { display: flex; align-items: flex-start; margin-bottom: 12px; padding: 12px; background: #1E2132; border-radius: 10px; border: 1px solid #2A2E45; position: relative; overflow: hidden; transition: border-color 0.3s, opacity 0.3s, transform 0.3s, box-shadow 0.3s; width: 100%; box-sizing: border-box; }
-        .achievement.unlocked { border-left: 4px solid #4CAF50; background: #242938; opacity: 0.6; }
+        .achievement.unlocked { border-left: 4px solid #4CAF50; background: #242938; }
         .achievement.challenge { border: 2px solid #FFD600; background: #2A2410; }
         .achievement.mastered-badge { border: 2px solid #FFD600; background: linear-gradient(135deg, #2A2410 0%, #1A1C2E 100%); box-shadow: 0 0 15px rgba(255, 214, 0, 0.3); }
         .achievement-fill { position: absolute; top: 0; left: 0; bottom: 0; background: rgba(0, 191, 165, 0.1); transition: width 0.5s; z-index: 0; }
@@ -257,13 +257,21 @@ class MainActivity : AppCompatActivity() {
         .profile-right { display: flex; flex-direction: column; justify-content: center; align-items: flex-end; padding-left: 15px; border-left: 1px solid #2A2E45; gap: 4px; min-width: 130px; }
         .award-stat { display: flex; align-items: center; gap: 6px; font-size: 9px; font-weight: 900; text-transform: uppercase; color: #888; }
         .award-stat span { font-size: 13px; color: #FFF; min-width: 18px; text-align: right; }
+        .game-icon-container { position: relative; width: 56px; height: 56px; margin-right: 15px; flex-shrink: 0; }
+        .mastery-badge-overlay { position: absolute; top: -8px; right: -8px; font-size: 18px; z-index: 5; text-shadow: 0 0 5px rgba(0,0,0,0.8); }
+        .aotw-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }
+        .aotw-timer { font-size: 10px; font-weight: 800; color: #888; text-transform: uppercase; }
+        .aotw-unlocked { border-color: #4CAF50 !important; background: rgba(76, 175, 80, 0.1) !important; }
+        .aotw-badge-status { position: absolute; bottom: -5px; right: -5px; font-size: 12px; }
         .prog-circle { width: 8px; height: 8px; border-radius: 50%; }
         .circle-beaten { background: #FFF; box-shadow: 0 0 5px #FFF; }
         .circle-mastered { background: #FFD600; box-shadow: 0 0 5px #FFD600; }
         .circle-soft-beaten { border: 1px solid #888; }
         .aotw-card { background: linear-gradient(135deg, #1A1C2E 0%, #2A2E45 100%); border: 2px solid #FFD600; border-radius: 10px; padding: 12px; margin-bottom: 15px; position: relative; width: 100%; box-sizing: border-box; }
         .aotw-label { position: absolute; top: -10px; left: 10px; background: #FFD600; color: #000; font-size: 9px; font-weight: 900; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; }
-        .game-card { padding: 15px; background: #1E2132; border-radius: 10px; border: 1px solid #2A2E45; margin-bottom: 12px; cursor: pointer; width: 100%; box-sizing: border-box; }
+        .game-card { padding: 15px; background: #1E2132; border-radius: 10px; border: 1px solid #2A2E45; margin-bottom: 12px; cursor: pointer; width: 100%; box-sizing: border-box; transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s; position: relative; overflow: hidden; }
+        .game-card.mastered { border: 2px solid #FFD600; background: linear-gradient(135deg, #2A2410 0%, #1E2132 100%); box-shadow: 0 0 15px rgba(255, 214, 0, 0.2); }
+        .game-card.mastered::after { content: 'MASTERED'; position: absolute; top: 0; right: 0; font-size: 9px; font-weight: 900; padding: 1px 8px; border-bottom-left-radius: 6px; background: #FFD600; color: #000; }
         .game-card-header { display: flex; align-items: flex-start; width: 100%; }
         .game-icon { width: 56px; height: 56px; margin-right: 15px; border-radius: 6px; flex-shrink: 0; }
         .game-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -347,7 +355,15 @@ class MainActivity : AppCompatActivity() {
           }
           
           var games = await apiFetch('API_GetUserRecentlyPlayedGames.php', { u: user, c: 5 }); if (Array.isArray(games)) state.recentGames = games;
-          var aotw = await apiFetch('API_GetAchievementOfTheWeek.php'); if (aotw) state.aotw = aotw;
+          var aotw = await apiFetch('API_GetAchievementOfTheWeek.php'); 
+          if (aotw && aotw.Achievement) {
+            var progress = await apiFetch('API_GetGameInfoAndUserProgress.php', { u: user, g: aotw.Game.ID });
+            if (progress && progress.Achievements) {
+              var earned = Object.values(progress.Achievements).find(function(a){ return a.ID == aotw.Achievement.ID; });
+              if (earned) aotw.Unlocked = !!(earned.DateEarnedHardcore || earned.DateEarned);
+            }
+            state.aotw = aotw;
+          }
           state.isLoading = false; render();
         }
 
@@ -392,7 +408,7 @@ class MainActivity : AppCompatActivity() {
                       state.activeSubsets = { 0: true };
                       var oldAchievements = state.achievements;
                       state.achievements = Object.values(data.Achievements).map(function(a, idx) {
-                         var isUnlocked = !!(a.DateEarnedHardcore || a.DateEarned);
+                         var isUnlocked = !!a.DateEarnedHardcore;
                          var oldA = oldAchievements.find(function(o){ return o.title === a.Title; });
                          if (oldA && !oldA.unlocked && isUnlocked) {
                             state.recentUnlocks[a.Title] = Date.now();
@@ -433,8 +449,8 @@ class MainActivity : AppCompatActivity() {
               var user = window.localStorage.getItem('ra_user');
               var data = await apiFetch('API_GetGameInfoAndUserProgress.php', { u: user, g: gameId });
               if (data && data.Achievements) {
-                state.gameAchievements[gameId] = Object.values(data.Achievements).filter(function(a){return a.DateEarnedHardcore || a.DateEarned;})
-                  .sort(function(a, b){return new Date(b.DateEarnedHardcore || b.DateEarned) - new Date(a.DateEarnedHardcore || a.DateEarned);}).slice(0, 5);
+                state.gameAchievements[gameId] = Object.values(data.Achievements).filter(function(a){return a.DateEarnedHardcore;})
+                  .sort(function(a, b){return new Date(b.DateEarnedHardcore) - new Date(a.DateEarnedHardcore);}).slice(0, 5);
               }
             }
           }
@@ -463,6 +479,11 @@ class MainActivity : AppCompatActivity() {
           if(newData.power_w !== undefined) state.power_w = newData.power_w.toFixed(1) + 'W';
           if (newData.achievements) {
             newData.achievements.forEach(function(newA){
+              // UDP Filter: Emulator-lnk forks might send "unlocked" for softcore. 
+              // We ensure consistency by forcing them back to locked if they aren't hardcore.
+              // Note: Most -lnk forks already only send hardcore flags, but this is a safety net.
+              if (newA.unlocked && newA.hardcore === false) newA.unlocked = false;
+
               var sId = newA.subset_id || 0;
               if (state.activeSubsets[sId] === undefined) {
                  var matching = (newA.subset_title || '').trim().toLowerCase() === state.game_title.trim().toLowerCase();
@@ -493,7 +514,7 @@ class MainActivity : AppCompatActivity() {
           if (!icon && a.BadgeName) icon = 'https://retroachievements.org/Badge/' + a.BadgeName + (a.unlocked || isFeed ? '' : '_lock') + '.png';
           
           var iconHtml = isMasterBadge ? 
-            '<div style="font-size: 32px; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; margin-right: 15px; background: #2A2E45; border-radius: 6px; z-index: 2; flex-shrink: 0;">🏆</div>' :
+            '<div style="font-size: 32px; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; margin-right: 15px; background: #2A2E45; border-radius: 6px; z-index: 2; flex-shrink: 0;">👑</div>' :
             '<img class="icon" src="' + icon + '">';
           
           var badge = '';
@@ -594,10 +615,19 @@ class MainActivity : AppCompatActivity() {
                        '<div class="award-stat"><div class="prog-circle circle-beaten"></div>BEATEN <span>' + awd.beaten + '</span></div>' +
                        '<div class="award-stat"><div class="prog-circle circle-mastered"></div>MASTERED <span>' + awd.mastered + '</span></div></div></div>';
                if (state.aotw) {
-                 html += '<div class="aotw-card"><div class="aotw-label">Achievement of the Week</div>' +
+                 var start = new Date(state.aotw.StartAt);
+                 var end = new Date(start.getTime() + (7 * 24 * 60 * 60 * 1000));
+                 var diff = Math.floor((end - Date.now()) / (1000 * 60 * 60 * 24));
+                 var timerText = diff > 0 ? ('Ends in ' + diff + ' days') : 'Ending soon';
+                 var aotwClass = state.aotw.Unlocked ? ' aotw-unlocked' : '';
+                 
+                 html += '<div class="aotw-card' + aotwClass + '"><div class="aotw-header"><div class="aotw-label">Achievement of the Week</div></div>' +
                          '<div style="display:flex;align-items:center;margin-top:5px;">' +
-                         '<img src="https://retroachievements.org/Badge/' + state.aotw.Achievement.BadgeName + '.png" style="width:40px;margin-right:12px;border-radius:4px;">' +
-                         '<div style="flex:1;"><div style="font-size:10px;color:#00BFA5;font-weight:900;text-transform:uppercase;margin-bottom:2px;">' + (state.aotw.Console ? state.aotw.Console.Title : '') + '</div>' +
+                         '<div style="position:relative;"><img src="https://retroachievements.org/Badge/' + state.aotw.Achievement.BadgeName + '.png" style="width:40px;margin-right:12px;border-radius:4px;">' +
+                         (state.aotw.Unlocked ? '<div class="aotw-badge-status">✅</div>' : '') + '</div>' +
+                         '<div style="flex:1;"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;">' +
+                         '<div style="font-size:10px;color:#00BFA5;font-weight:900;text-transform:uppercase;">' + (state.aotw.Console ? state.aotw.Console.Title : '') + '</div>' +
+                         '<div class="aotw-timer">' + timerText + '</div></div>' +
                          '<div style="font-size:14px;font-weight:bold;color:#FFD600;">' + state.aotw.Achievement.Title + '</div>' +
                          '<div style="font-size:10px;color:#888;">' + state.aotw.Game.Title + '</div></div></div></div>';
                }
@@ -606,8 +636,13 @@ class MainActivity : AppCompatActivity() {
                  state.recentGames.forEach(function(game){
                    var percent = Math.round((game.NumAchievedHardcore / game.NumPossibleAchievements) * 100);
                    var isExpanded = state.expandedGame === game.GameID;
-                   html += '<div class="game-card" onclick="toggleGameExpansion(' + game.GameID + ')">' +
-                           '<div class="game-card-header"><img class="game-icon" src="https://media.retroachievements.org' + game.ImageIcon + '">' +
+                   var isMastered = game.NumAchievedHardcore >= game.NumPossibleAchievements && game.NumPossibleAchievements > 0;
+                   html += '<div class="game-card' + (isMastered ? ' mastered' : '') + '" onclick="toggleGameExpansion(' + game.GameID + ')">' +
+                           '<div class="game-card-header">' +
+                           '<div class="game-icon-container">' +
+                           (isMastered ? '<div class="mastery-badge-overlay">👑</div>' : '') +
+                           '<img class="game-icon" src="https://media.retroachievements.org' + game.ImageIcon + '" style="margin-right:0;">' +
+                           '</div>' +
                            '<div class="game-info"><div class="game-console">' + game.ConsoleName + '</div>' +
                            '<div class="game-meta-row"><div class="game-title-text">' + game.Title + '</div>' +
                            '<div class="game-stats-text">' + game.NumAchievedHardcore + ' / ' + game.NumPossibleAchievements + ' (' + percent + '%)</div></div>' +
@@ -646,14 +681,29 @@ class MainActivity : AppCompatActivity() {
           document.getElementById('modal-overlay').style.display = show ? 'flex' : 'none';
           if (window.Android) window.Android.setFocusable(show);
           if (show) {
-            document.getElementById('input-user').value = window.localStorage.getItem('ra_user') || '';
-            document.getElementById('input-key').value = window.localStorage.getItem('ra_key') || '';
             renderSettings();
             renderAppTriggerList();
           }
         }
         function renderSettings() {
-          var container = document.getElementById('filter-list'); var subsetsMap = {};
+          var user = window.localStorage.getItem('ra_user') || '';
+          var key = window.localStorage.getItem('ra_key') || '';
+          var isLoggedIn = (user && key);
+          
+          var credsContainer = document.getElementById('credentials-section');
+          if (isLoggedIn) {
+            credsContainer.innerHTML = '<div style="background: rgba(255, 82, 82, 0.1); padding: 15px; border-radius: 8px; border: 1px solid #FF5252; text-align: center;">' +
+              '<div style="font-size: 14px; font-weight: 800; color: #FFF; margin-bottom: 5px;">Logged in as ' + user + '</div>' +
+              '<button onclick="logout()" style="width: 100%; padding: 8px; background: #FF5252; border: none; border-radius: 4px; color: #000; font-weight: 900; text-transform: uppercase; cursor: pointer;">Logout</button>' +
+              '</div>';
+          } else {
+            credsContainer.innerHTML = '<div class="input-group"><label>RA Username</label><input type="text" id="input-user" value="' + user + '"></div>' +
+              '<div class="input-group"><label>API Key</label><input type="password" id="input-key" value="' + key + '"></div>' +
+              '<button class="btn-save" style="margin-top: 5px;" onclick="saveCredentials()">Save & Refresh</button>';
+          }
+
+          var filterContainer = document.getElementById('filter-list');
+          var subsetsMap = {};
           state.achievements.forEach(function(a){
             var title = a.subset_title || 'Base Set'; var id = a.subset_id || 0;
             if (!subsetsMap[id]) subsetsMap[id] = title;
@@ -668,9 +718,9 @@ class MainActivity : AppCompatActivity() {
           html += '<div class="app-row" onclick="toggleHideUnlocked()"><label><input type="checkbox" ' + (state.hideUnlocked ? 'checked' : '') + ' onclick="event.stopPropagation(); toggleHideUnlocked()"><span>Hide Unlocked</span></label></div>';
           html += '<div class="modal-divider"></div>';
           Object.keys(subsetsMap).sort(function(a,b){return a-b;}).forEach(function(id){
-            html += '<div class="app-row" onclick="toggleSubset(' + id + ')"><label><input type="checkbox" ' + (state.activeSubsets[id] ? 'checked' : '') + ' onclick="event.stopPropagation(); toggleSubset(' + id + ')"><span>' + subsetsMap[id] + '</span></label></div>';
+            html += '<div class="app-row" onclick="toggleSubset(id)"><label><input type="checkbox" ' + (state.activeSubsets[id] ? 'checked' : '') + ' onclick="event.stopPropagation(); toggleSubset(' + id + ')"><span>' + subsetsMap[id] + '</span></label></div>';
           });
-          container.innerHTML = html;
+          filterContainer.innerHTML = html;
         }
         function toggleAppTriggerMenu() {
             var menu = document.getElementById('app-trigger-menu');
@@ -701,16 +751,25 @@ class MainActivity : AppCompatActivity() {
         function saveCredentials() {
           window.localStorage.setItem('ra_user', document.getElementById('input-user').value);
           window.localStorage.setItem('ra_key', document.getElementById('input-key').value);
-          fetchProfile(); toggleSettings(false);
+          fetchProfile(); renderSettings();
+        }
+        function logout() {
+          if (confirm('Are you sure you want to log out and clear your credentials?')) {
+            window.localStorage.removeItem('ra_user');
+            window.localStorage.removeItem('ra_key');
+            state.profile = null;
+            state.recentGames = [];
+            state.aotw = null;
+            render();
+            renderSettings();
+          }
         }
         </script></head><body>
         <div class="settings-btn" onclick="toggleSettings(true)"><svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg></div>
         <div id="modal-overlay" onclick="toggleSettings(false)"><div class="modal" onclick="event.stopPropagation()">
           <div class="modal-title">Settings</div>
           <div class="modal-scroll">
-            <div id="perm-container"></div>
-            <div class="input-group"><label>RA Username</label><input type="text" id="input-user"></div>
-            <div class="input-group"><label>API Key</label><input type="password" id="input-key"></div>
+            <div id="credentials-section"></div>
             <div class="modal-divider"></div>
             <div class="input-group">
                 <label>Trigger Apps (Rich Presence)</label>
@@ -722,7 +781,7 @@ class MainActivity : AppCompatActivity() {
             <div class="modal-divider"></div>
             <div id="filter-list"></div>
           </div>
-          <button class="btn-save" style="margin-top: 15px;" onclick="saveCredentials()">Save & Refresh</button>
+          <button class="btn-save" style="margin-top: 15px; display: none;" id="btn-save-outer" onclick="saveCredentials()">Save & Refresh</button>
         </div></div>
         <div class="dashboard">
           <div id="session-timer" class="session-timer">00:00</div>

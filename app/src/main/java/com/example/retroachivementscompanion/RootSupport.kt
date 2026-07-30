@@ -3,6 +3,7 @@ package com.example.retroachivementscompanion
 import java.io.File
 import java.util.concurrent.locks.ReentrantLock
 import android.content.Context
+import android.util.Log
 
 object RootSupport {
     private val lock = ReentrantLock()
@@ -17,8 +18,10 @@ object RootSupport {
     }
 
     fun runGeneratedScript(context: Context, scriptName: String, scriptContents: String): String? {
+        context.filesDir.setExecutable(true, false)
         val scriptsDir = File(context.filesDir, "root-scripts")
         if (!scriptsDir.exists()) scriptsDir.mkdirs()
+        scriptsDir.setExecutable(true, false)
         
         val scriptFile = File(scriptsDir, scriptName)
         try {
