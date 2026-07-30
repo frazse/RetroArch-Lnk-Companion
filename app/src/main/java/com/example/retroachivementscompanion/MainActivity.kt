@@ -402,9 +402,10 @@ class MainActivity : AppCompatActivity() {
           if (!syncEnabled) { state.isApiActive = false; return; }
           
           if (window.Android && !window.Android.isLocalAppActive()) {
+             var wasActive = state.isApiActive;
              state.isApiActive = false;
              state.currentRpGameId = null;
-             render();
+             if (wasActive) render();
              return;
           }
 
@@ -461,15 +462,18 @@ class MainActivity : AppCompatActivity() {
         }
 
         function updateDeviceStats(data) {
-          if (data.cpu_util !== undefined) state.cpu_util = data.cpu_util + '%';
-          if (data.gpu_util !== undefined) state.gpu_util = data.gpu_util + '%';
-          if (data.temp_cpu !== undefined) state.temp_cpu = data.temp_cpu + '°';
-          if (data.temp_gpu !== undefined) state.temp_gpu = data.temp_gpu + '°';
-          if (data.battery !== undefined) state.battery = data.battery + '%';
-          if (data.power_w !== undefined) state.power_w = data.power_w + 'W';
-          if (data.fps !== undefined) state.fps = data.fps;
-          if (data.frametime !== undefined) state.frametime = data.frametime + 'ms';
-          render();
+          if (data.cpu_util !== undefined) { state.cpu_util = data.cpu_util + '%'; setText('cpu_util', state.cpu_util); }
+          if (data.gpu_util !== undefined) { state.gpu_util = data.gpu_util + '%'; setText('gpu_util', state.gpu_util); }
+          if (data.temp_cpu !== undefined) { state.temp_cpu = data.temp_cpu + '°'; setText('temp_cpu', state.temp_cpu); }
+          if (data.temp_gpu !== undefined) { state.temp_gpu = data.temp_gpu + '°'; setText('temp_gpu', state.temp_gpu); }
+          if (data.battery !== undefined) { state.battery = data.battery + '%'; setText('battery', state.battery); }
+          if (data.power_w !== undefined) { state.power_w = data.power_w + 'W'; setText('power_w', state.power_w); }
+          if (data.fps !== undefined) { state.fps = data.fps; setText('fps', state.fps); }
+          if (data.frametime !== undefined) { state.frametime = data.frametime + 'ms'; setText('frametime', state.frametime); }
+        }
+        function setText(id, value) {
+          var el = document.getElementById(id);
+          if (el && el.innerText !== String(value)) el.innerText = value;
         }
 
         async function toggleGameExpansion(gameId) {
@@ -804,6 +808,22 @@ class MainActivity : AppCompatActivity() {
           }
         }
         function renderSettings() {
+          var user = window.localStorage.getItem('ra_user') || '';
+          var key = window.localStorage.getItem('ra_key') || '';
+          var isLoggedIn = (user && key);
+          
+          var credsContainer = document.getElementById('credentials-section');
+          if (isLoggedIn) {
+            credsContainer.innerHTML = '<div style="background: rgba(255, 82, 82, 0.1); padding: 15px; border-radius: 8px; border: 1px solid #FF5252; text-align: center;">' +
+              '<div style="font-size: 14px; font-weight: 800; color: #FFF; margin-bottom: 5px;">Logged in as ' + user + '</div>' +
+              '<button onclick="logout()" style="width: 100%; padding: 8px; background: #FF5252; border: none; border-radius: 4px; color: #000; font-weight: 900; text-transform: uppercase; cursor: pointer;">Logout</button>' +
+              '</div>';
+          } else {
+            credsContainer.innerHTML = '<div class="input-group"><label>RA Username</label><input type="text" id="input-user" value="' + user + '"></div>' +
+              '<div class="input-group"><label>API Key</label><input type="password" id="input-key" value="' + key + '"></div>' +
+              '<button class="btn-save" style="margin-top: 5px;" onclick="saveCredentials()">Save & Refresh</button>';
+          }
+
           var container = document.getElementById('filter-list'); var subsetsMap = {};
           state.achievements.forEach(function(a){
             var title = a.subset_title || 'Base Set'; var id = a.subset_id || 0;
