@@ -50,7 +50,7 @@ class MainActivity : AppCompatActivity() {
                 if (active) {
                     webView?.evaluateJavascript("richPresencePoll(true);", null)
                 } else {
-                    webView?.evaluateJavascript("state.isApiActive = false; state.currentRpGameId = null; render();", null)
+                    webView?.evaluateJavascript("state.isApiActive = false; state.currentRpGameId = null; state.lastPacketTime = 0; render();", null)
                 }
             }
         }
@@ -262,8 +262,8 @@ class MainActivity : AppCompatActivity() {
         .award-stat span { font-size: 13px; color: #FFF; min-width: 18px; text-align: right; }
         .game-icon-container { position: relative; width: 56px; height: 56px; margin-right: 15px; flex-shrink: 0; }
         .mastery-badge-overlay { position: absolute; top: -8px; right: -8px; font-size: 18px; z-index: 5; text-shadow: 0 0 5px rgba(0,0,0,0.8); }
-        .aotw-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }
-        .aotw-timer { font-size: 10px; font-weight: 800; color: #888; text-transform: uppercase; }
+        .aotw-header { display: none; }
+        .aotw-timer { position: absolute; top: 10px; right: 12px; font-size: 10px; font-weight: 800; color: #888; text-transform: uppercase; }
         .aotw-unlocked { border-color: #4CAF50 !important; background: rgba(76, 175, 80, 0.1) !important; }
         .aotw-badge-status { position: absolute; bottom: -5px; right: -5px; font-size: 12px; }
         .prog-circle { width: 8px; height: 8px; border-radius: 50%; }
@@ -495,10 +495,15 @@ class MainActivity : AppCompatActivity() {
           if(!newData || !newData.game_title) return;
           state.isApiActive = false; 
           var isGeneric = ['RetroArch','Dolphin','PPSSPP'].includes(newData.game_title);
-          if (isGeneric) { state.lastPacketTime = 0; render(); return; }
+          if (isGeneric) { 
+             // Generic heartbeat - do NOT reset lastPacketTime so the 10s timeout can still trigger
+             render(); 
+             return; 
+          }
+          
           state.lastPacketTime = Date.now();
           if (newData.game_title !== state.game_title) {
-            var old = state; state = { view: old.view, game_title: newData.game_title, fps: '--', cpu_util: '--%', gpu_util: '--%', battery: '--%', temp_cpu: '--°', temp_gpu: '--°', frametime: '--ms', power_w: '--W', achievements: [], activeSubsets: {}, showHeaders: old.showHeaders, hideUnlocked: old.hideUnlocked, recentUnlocks: {}, startTime: Date.now(), lastPacketTime: Date.now(), profile: old.profile, recentGames: old.recentGames, awardCounts: old.awardCounts, aotw: old.aotw, expandedGame: null, gameAchievements: {}, isLoading: false, gameMetadata: {}, profilePicUrl: old.profilePicUrl, isApiActive: false, lastApiPoll: old.lastApiPoll, currentRpGameId: null, lastRpAchievementFetch: old.lastRpAchievementFetch, rpMissCount: 0, lastProfileSync: old.lastProfileSync, completionProgress: old.completionProgress };
+            var old = state; state = { view: old.view, game_title: newData.game_title, fps: '--', cpu_util: '--%', gpu_util: '--%', battery: '--%', temp_cpu: '--°', temp_gpu: '--°', frametime: '--ms', power_w: '--W', achievements: [], activeSubsets: {}, showHeaders: old.showHeaders, hideUnlocked: old.hideUnlocked, recentUnlocks: {}, startTime: Date.now(), lastPacketTime: Date.now(), profile: old.profile, recentGames: old.recentGames, awardCounts: old.awardCounts, aotw: old.aotw, expandedGame: null, gameAchievements: {}, isLoading: false, gameMetadata: {}, profilePicUrl: old.profilePicUrl, isApiActive: false, lastApiPoll: old.lastApiPoll, currentRpGameId: null, lastRpAchievementFetch: old.lastRpAchievementFetch, rpMissCount: 0, lastProfileSync: old.lastProfileSync, completionProgress: old.completionProgress, compFilter: old.compFilter, compSort: old.compSort };
           }
           if(newData.fps !== undefined) state.fps = Math.round(newData.fps);
           if(newData.frametime !== undefined) state.frametime = newData.frametime.toFixed(1) + 'ms';
@@ -731,15 +736,16 @@ class MainActivity : AppCompatActivity() {
                    var timerText = diff > 0 ? ('Ends in ' + diff + ' days') : 'Ending soon';
                    var aotwClass = state.aotw.Unlocked ? ' aotw-unlocked' : '';
                    
-                   html += '<div class="aotw-card' + aotwClass + '"><div class="aotw-header"><div class="aotw-label">Achievement of the Week</div><div class="aotw-timer">' + timerText + '</div></div>' +
-                           '<div style="display:flex;align-items:center;margin-top:5px;">' +
-                           '<div style="position:relative;"><img src="https://retroachievements.org/Badge/' + state.aotw.Achievement.BadgeName + '.png" style="width:40px;margin-right:12px;border-radius:4px;">' +
+                   html += '<div class="aotw-card' + aotwClass + '">' +
+                           '<div class="aotw-label">Achievement of the Week</div><div class="aotw-timer">' + timerText + '</div>' +
+                           '<div style="display:flex; align-items: flex-start;">' +
+                           '<div style="position:relative; width: 48px; height: 48px; margin-right: 12px; flex-shrink: 0;">' +
+                           '<img src="https://retroachievements.org/Badge/' + state.aotw.Achievement.BadgeName + '.png" style="width:100%; border-radius:6px;">' +
                            (state.aotw.Unlocked ? '<div class="aotw-badge-status">✅</div>' : '') + '</div>' +
-                           '<div style="flex:1;"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;">' +
-                           '<div style="font-size:10px;color:#00BFA5;font-weight:900;text-transform:uppercase;">' + (state.aotw.Console ? state.aotw.Console.Title : '') + '</div>' +
-                           '</div>' +
-                           '<div style="font-size:14px;font-weight:bold;color:#FFD600;">' + state.aotw.Achievement.Title + '</div>' +
-                           '<div style="font-size:10px;color:#888;">' + state.aotw.Game.Title + '</div></div></div></div>';
+                           '<div class="game-info">' +
+                           '<div class="game-console" style="margin-bottom: 2px; line-height: 1;">' + (state.aotw.Console ? state.aotw.Console.Title : '') + '</div>' +
+                           '<div style="color:#FFD600; font-size: 14px; font-weight: bold; line-height: 1.2;">' + state.aotw.Achievement.Title + '</div>' +
+                           '<div style="font-size:10px;color:#888;font-weight:bold;line-height: 1; margin-top: 2px;">' + state.aotw.Game.Title + '</div></div></div></div>';
                  }
                  if (state.recentGames.length > 0) {
                    html += '<div class="subset-header"><span>Last 5 Games Played</span></div>';
@@ -775,14 +781,16 @@ class MainActivity : AppCompatActivity() {
           var now = new Date(); 
           document.getElementById('clock').innerText = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0'); 
           
-          // SURGICAL UPDATE: Only refresh the clock/timers, don't rebuild the entire DOM!
-          // This prevents the dropdowns/modals from closing every second.
           var hasGame = (Date.now() - state.lastPacketTime < 10000) || state.isApiActive;
           if (hasGame) {
              var d = Date.now() - state.startTime;
              var sessionText = Math.floor(d/60000).toString().padStart(2,'0') + ':' + Math.floor((d%60000)/1000).toString().padStart(2,'0');
              var sessionEl = document.getElementById('session-timer');
              if (sessionEl && sessionEl.innerText !== sessionText) sessionEl.innerText = sessionText;
+          } else {
+             // FORCE DISMISSAL: If timeout occurs, ensure render() is called to hide dashboard
+             var dash = document.querySelector('.dashboard');
+             if (dash && !dash.classList.contains('hidden')) render();
           }
 
           richPresencePoll();
