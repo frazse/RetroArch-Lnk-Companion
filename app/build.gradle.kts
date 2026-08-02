@@ -35,11 +35,14 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        aidl = true
     }
 }
 
 dependencies {
     implementation(libs.androidx.appcompat)
+    implementation(libs.rikka.shizuku.api)
+    implementation(libs.rikka.shizuku.provider)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)

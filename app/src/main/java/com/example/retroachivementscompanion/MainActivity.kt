@@ -40,10 +40,6 @@ class MainActivity : AppCompatActivity() {
         wv.addJavascriptInterface(WebAppInterface(), "Android")
         wv.loadDataWithBaseURL("https://retroarch.dual", DASHBOARD_HTML, "text/html", "UTF-8", null)
         
-        telemetryReader = TelemetryReader(this)
-        startUdpListener()
-        startTelemetryPoller()
-
         foregroundAppWatcher = ForegroundAppWatcher(this) { active ->
             isLocalAppActive = active
             runOnUiThread {
@@ -55,6 +51,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
         foregroundAppWatcher?.start()
+
+        telemetryReader = TelemetryReader(this, foregroundAppWatcher?.getShizukuSupport())
+        
+        startUdpListener()
+        startTelemetryPoller()
     }
 
     override fun onResume() {
@@ -82,12 +83,23 @@ class MainActivity : AppCompatActivity() {
         fun hasUsagePermission(): Boolean = foregroundAppWatcher?.hasUsageStatsPermission() ?: false
 
         @JavascriptInterface
+        fun isShizukuAvailable(): Boolean = foregroundAppWatcher?.getShizukuSupport()?.isShizukuAvailable() ?: false
+
+        @JavascriptInterface
+        fun hasShizukuPermission(): Boolean = foregroundAppWatcher?.getShizukuSupport()?.hasPermission() ?: false
+
+        @JavascriptInterface
         fun openUsageSettings() {
             try {
                 startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
             } catch (e: Exception) {
                 Log.e("Companion", "Could not open usage settings", e)
             }
+        }
+
+        @JavascriptInterface
+        fun requestShizukuPermission() {
+            foregroundAppWatcher?.getShizukuSupport()?.init()
         }
 
         @JavascriptInterface
@@ -128,8 +140,6 @@ class MainActivity : AppCompatActivity() {
                     lastUdpTime = System.currentTimeMillis()
                     val json = String(packet.data, 0, packet.length)
                     
-                    // Only process/forward UDP packets if we are actually showing the HUD
-                    // This avoids redundant WebView calls when app is idle.
                     if (isLocalAppActive || (System.currentTimeMillis() - lastUdpTime < 5000)) {
                         runOnUiThread { if (running && !isFinishing && !isDestroyed) webView?.evaluateJavascript("update($json);", null) }
                     }
@@ -143,9 +153,6 @@ class MainActivity : AppCompatActivity() {
         Thread {
             while (running) {
                 try {
-                    // DEEP SLEEP MODE:
-                    // If no game is locally active and no recent UDP stream, completely skip ALL work.
-                    // This stops expensive awk scripts and sysfs reads.
                     val isUdpActive = (System.currentTimeMillis() - lastUdpTime < 10000)
                     
                     if (isLocalAppActive && !isUdpActive) {
@@ -174,13 +181,9 @@ class MainActivity : AppCompatActivity() {
                                }
                             }
                         }
-                    } else if (!isLocalAppActive && !isUdpActive) {
-                        // In deep sleep, we poll very slowly just to keep the flag check alive
-                        // without performing any sysfs/shell tasks.
                     }
                 } catch (e: Exception) { Log.e("Telemetry", "Poll error", e) }
                 
-                // Adaptive Sleep: 2s when active, 5s when idle.
                 val sleepTime = if (isLocalAppActive) 2000L else 5000L
                 Thread.sleep(sleepTime)
             }
@@ -224,8 +227,6 @@ class MainActivity : AppCompatActivity() {
         .progress-bar-fill { height: 100%; background: #4CAF50; width: 0%; transition: width 0.5s; }
         .wrapper { margin-top: 120px; height: calc(100vh - 120px); display: flex; flex-direction: column; overflow: hidden; width: 100%; transition: margin-top 0.4s, height 0.4s; }
         .wrapper.full-screen { margin-top: 0; height: 100vh; }
-        #pinned-achievements { flex-shrink: 0; background: #0F111A; padding: 18px 18px 0 18px; box-sizing: border-box; border-bottom: 2px solid #2A2E45; display: none; }
-        #pinned-achievements:not(:empty) { display: block; }
         .content { flex-grow: 1; overflow-y: auto; padding: 18px; box-sizing: border-box; width: 100%; }
         #achievement-list { width: 100%; display: block; }
         .subset-header { font-size: 13px; font-weight: 900; color: #00BFA5; text-transform: uppercase; margin: 15px 0 8px 0; padding-bottom: 4px; border-bottom: 1px solid #2A2E45; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center; width: 100%; }
@@ -234,6 +235,7 @@ class MainActivity : AppCompatActivity() {
         .achievement.unlocked { border-left: 4px solid #4CAF50; background: #242938; }
         .achievement.challenge { border: 2px solid #FFD600; background: #2A2410; }
         .achievement.mastered-badge { border: 2px solid #FFD600; background: linear-gradient(135deg, #2A2410 0%, #1A1C2E 100%); box-shadow: 0 0 15px rgba(255, 214, 0, 0.3); }
+        .achievement.relevant { border-left: 4px solid #FFD600; background: rgba(255, 214, 0, 0.05); }
         .achievement-fill { position: absolute; top: 0; left: 0; bottom: 0; background: rgba(0, 191, 165, 0.1); transition: width 0.5s; z-index: 0; }
         .icon { width: 56px; height: 56px; margin-right: 15px; background: #2A2E45; border-radius: 6px; z-index: 2; flex-shrink: 0; }
         .info { flex: 1; min-width: 0; z-index: 2; display: flex; flex-direction: column; }
@@ -246,6 +248,7 @@ class MainActivity : AppCompatActivity() {
         .badge-missable { background: #FF5252; color: #FFF; }
         .badge-progression { background: #00BFA5; }
         .badge-win { background: #FFD600; }
+        .badge-relevant { background: #FFD600; color: #000; padding: 2px 8px; border-bottom-left-radius: 6px; }
         .badge-challenge { border: 1px solid #FFD600; background: rgba(255, 214, 0, 0.2); color: #FFD600; }
         .badge-mastered { background: #FFD600; color: #000; }
         .profile-banner { display: flex; padding: 15px; background: #1A1C2E; border: 1px solid #00BFA5; border-radius: 12px; margin-bottom: 15px; width: 100%; box-sizing: border-box; gap: 15px; cursor: pointer; transition: background 0.2s; }
@@ -306,6 +309,10 @@ class MainActivity : AppCompatActivity() {
         .comp-select { flex: 1; background: #1A1C2E; border: 1px solid #2A2E45; color: #E0E0E0; padding: 8px; border-radius: 6px; font-size: 12px; font-weight: bold; outline: none; }
         .comp-select:focus { border-color: #00BFA5; }
 
+        .shizuku-banner { background: #00BFA5; color: #000; padding: 10px; border-radius: 6px; font-size: 12px; font-weight: bold; margin-bottom: 15px; cursor: pointer; text-align: center; }
+        .shizuku-banner.inactive { background: #3A3D4D; color: #888; }
+        .shizuku-banner.waiting { background: #FFD600; color: #000; }
+
         #modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2000; align-items: center; justify-content: center; }
         .modal { background: #1A1C2E; width: 90%; max-width: 450px; border: 1px solid #00BFA5; border-radius: 12px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: flex; flex-direction: column; max-height: 80vh; }
         .modal-title { font-size: 20px; font-weight: 900; color: #00BFA5; margin-bottom: 15px; text-transform: uppercase; }
@@ -331,7 +338,7 @@ class MainActivity : AppCompatActivity() {
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-thumb { background: #2A2E45; border-radius: 10px; }
         </style><script>
-        var state = { view: 'profile', game_title: 'No Game Running', fps: '--', cpu_util: '--%', gpu_util: '--%', battery: '--%', temp_cpu: '--°', temp_gpu: '--°', frametime: '--ms', power_w: '--W', achievements: [], activeSubsets: {}, showHeaders: false, hideUnlocked: false, recentUnlocks: {}, startTime: Date.now(), lastPacketTime: 0, profile: null, recentGames: [], aotw: null, awardCounts: { beaten: 0, mastered: 0, softBeaten: 0, softCompleted: 0 }, expandedGame: null, gameAchievements: {}, isLoading: false, gameMetadata: {}, profilePicUrl: '', isApiActive: false, lastApiPoll: 0, currentRpGameId: null, lastRpAchievementFetch: 0, rpMissCount: 0, lastProfileSync: Date.now(), completionProgress: null, compFilter: 'all', compSort: 'newest' };
+        var state = { view: 'profile', game_title: 'No Game Running', fps: '--', cpu_util: '--%', gpu_util: '--%', battery: '--%', temp_cpu: '--°', temp_gpu: '--°', frametime: '--ms', power_w: '--W', achievements: [], activeSubsets: {}, showHeaders: false, hideUnlocked: false, recentUnlocks: {}, startTime: Date.now(), lastPacketTime: 0, profile: null, recentGames: [], aotw: null, awardCounts: { beaten: 0, mastered: 0, softBeaten: 0, softCompleted: 0 }, expandedGame: null, gameAchievements: {}, isLoading: false, gameMetadata: {}, profilePicUrl: '', isApiActive: false, lastApiPoll: 0, currentRpGameId: null, lastRpAchievementFetch: 0, rpMissCount: 0, lastProfileSync: Date.now(), completionProgress: null, compFilter: 'all', compSort: 'newest', richPresenceMsg: '', searchQuery: '' };
         var nextGlobalIndex = 0;
         
         async function apiFetch(endpoint, params) {
@@ -430,6 +437,7 @@ class MainActivity : AppCompatActivity() {
                 state.isApiActive = true;
                 state.rpMissCount = 0;
                 state.game_title = sum.LastGame ? sum.LastGame.Title : state.game_title;
+                state.richPresenceMsg = sum.RichPresenceMsg || '';
                 
                 if (state.currentRpGameId !== sum.LastGameID || (Date.now() - state.lastRpAchievementFetch >= 30000)) {
                    state.currentRpGameId = sum.LastGameID;
@@ -503,7 +511,7 @@ class MainActivity : AppCompatActivity() {
           
           state.lastPacketTime = Date.now();
           if (newData.game_title !== state.game_title) {
-            var old = state; state = { view: old.view, game_title: newData.game_title, fps: '--', cpu_util: '--%', gpu_util: '--%', battery: '--%', temp_cpu: '--°', temp_gpu: '--°', frametime: '--ms', power_w: '--W', achievements: [], activeSubsets: {}, showHeaders: old.showHeaders, hideUnlocked: old.hideUnlocked, recentUnlocks: {}, startTime: Date.now(), lastPacketTime: Date.now(), profile: old.profile, recentGames: old.recentGames, awardCounts: old.awardCounts, aotw: old.aotw, expandedGame: null, gameAchievements: {}, isLoading: false, gameMetadata: {}, profilePicUrl: old.profilePicUrl, isApiActive: false, lastApiPoll: old.lastApiPoll, currentRpGameId: null, lastRpAchievementFetch: old.lastRpAchievementFetch, rpMissCount: 0, lastProfileSync: old.lastProfileSync, completionProgress: old.completionProgress, compFilter: old.compFilter, compSort: old.compSort };
+            var old = state; state = { view: old.view, game_title: newData.game_title, fps: '--', cpu_util: '--%', gpu_util: '--%', battery: '--%', temp_cpu: '--°', temp_gpu: '--°', frametime: '--ms', power_w: '--W', achievements: [], activeSubsets: {}, showHeaders: old.showHeaders, hideUnlocked: old.hideUnlocked, recentUnlocks: {}, startTime: Date.now(), lastPacketTime: Date.now(), profile: old.profile, recentGames: old.recentGames, awardCounts: old.awardCounts, aotw: old.aotw, expandedGame: null, gameAchievements: {}, isLoading: false, gameMetadata: {}, profilePicUrl: old.profilePicUrl, isApiActive: false, lastApiPoll: old.lastApiPoll, currentRpGameId: null, lastRpAchievementFetch: old.lastRpAchievementFetch, rpMissCount: 0, lastProfileSync: old.lastProfileSync, completionProgress: old.completionProgress, compFilter: old.compFilter, compSort: old.compSort, richPresenceMsg: '', searchQuery: '' };
           }
           if(newData.fps !== undefined) state.fps = Math.round(newData.fps);
           if(newData.frametime !== undefined) state.frametime = newData.frametime.toFixed(1) + 'ms';
@@ -538,10 +546,11 @@ class MainActivity : AppCompatActivity() {
           render();
         }
 
-        function getAchievementHtml(a, isFeed) {
+        function getAchievementHtml(a, isFeed, isRelevant) {
           var isMasterBadge = (a.title === 'Mastered!');
           var statusClass = (a.unlocked || isFeed || isMasterBadge) ? 'unlocked' : (a.is_challenge ? 'challenge' : 'locked');
           if (isMasterBadge) statusClass += ' mastered-badge';
+          if (isRelevant) statusClass += ' relevant';
           var unlockClass = state.recentUnlocks[a.title] ? ' just-unlocked' : '';
           var fillWidth = (a.unlocked || isFeed || isMasterBadge) ? 100 : (a.progress_percent || 0);
           var titleText = isFeed ? a.Title : a.title;
@@ -557,7 +566,8 @@ class MainActivity : AppCompatActivity() {
             '<img class="icon" src="' + icon + '">';
           
           var badge = '';
-          if (isMasterBadge) badge = '<div class="badge-pill badge-mastered">Mastered</div>';
+          if (isRelevant) badge = '<div class="badge-pill badge-relevant">📍 RELEVANT</div>';
+          else if (isMasterBadge) badge = '<div class="badge-pill badge-mastered">Mastered</div>';
           else if (a.is_challenge) badge = '<div class="badge-pill badge-challenge">Challenge</div>';
           else if (a.type === 1) badge = '<div class="badge-pill badge-missable">Missable</div>';
           else if (a.type === 2) badge = '<div class="badge-pill badge-progression">Progression</div>';
@@ -577,7 +587,6 @@ class MainActivity : AppCompatActivity() {
           var dash = document.querySelector('.dashboard');
           var wrap = document.querySelector('.wrapper');
           var teleRows = document.querySelectorAll('.telemetry-row');
-          var pinnedContainer = document.getElementById('pinned-achievements');
           var backBtn = document.getElementById('back-btn');
           
           if (hasGame) {
@@ -599,40 +608,102 @@ class MainActivity : AppCompatActivity() {
              document.getElementById('fps').innerText = state.fps; document.getElementById('cpu_util').innerText = state.cpu_util; document.getElementById('gpu_util').innerText = state.gpu_util; document.getElementById('battery').innerText = state.battery;
              document.getElementById('temp_cpu').innerText = state.temp_cpu; document.getElementById('temp_gpu').innerText = state.temp_gpu; document.getElementById('frametime').innerText = state.frametime; document.getElementById('power_w').innerText = state.power_w;
 
-             // Mastered! Badge Logic (In-Game Only)
+             // --- DYNAMIC RE-ORDERING LOGIC ---
              var vis = state.achievements.filter(function(a){return state.activeSubsets[a.subset_id || 0];});
-             var allUnlocked = vis.length > 0 && vis.every(function(a){return a.unlocked;});
-             var finalVis = state.hideUnlocked ? vis.filter(function(a){return !a.unlocked || state.recentUnlocks[a.title];}) : vis;
-             var pinned = finalVis.filter(function(a){return a.is_challenge || state.recentUnlocks[a.title];}).sort(function(a,b){return a.originalIndex - b.originalIndex;});
              
-             if (allUnlocked) {
-                pinned.unshift({ title: 'Mastered!', description: 'All achievements earned for this game.', points: 'MASTERED', unlocked: true, BadgeName: null, subset_id: 0, originalIndex: -1 });
+             // 1. Extract context keywords unless in menus
+             var keywords = [];
+             var locationPhrase = "";
+             var isMenu = /in menus?/i.test(state.richPresenceMsg) || /main menu/i.test(state.richPresenceMsg);
+             
+             if (state.richPresenceMsg && !isMenu) {
+                var msg = state.richPresenceMsg.toLowerCase();
+                var noise = ['expert', 'normal', 'difficulty', 'hard', 'easy', 'gimli', 'legolas', 'aragorn', 'frodo', 'level', 'mode', 'so far', 'killed', 'creatures', 'has', 'completed', 'creature', 'playing', 'exploring', 'world', 'area', 'task'];
+                
+                // Regex to find location after 'in', 'completed', 'at', or 'exploring'
+                var match = state.richPresenceMsg.match(/(?:in|completed|at|exploring)\s+([^,.]+?)(?=\s+(?:on|with|at|difficulty|level|from|$))/i);
+                if (match && match[1]) {
+                   locationPhrase = match[1].trim();
+                   if (locationPhrase.length > 3) {
+                      keywords = [locationPhrase]; // EXCLUSIVE: Only use the full phrase if found
+                   }
+                }
+                
+                // If no phrase found, fall back to individual long words
+                if (keywords.length === 0) {
+                   var words = state.richPresenceMsg.split(/[\s,]+/).filter(w => {
+                       var lw = w.toLowerCase();
+                       return lw.length > 5 && !noise.includes(lw);
+                   });
+                   keywords = words;
+                }
+                if (keywords.length > 0) console.log("Final Context Keywords:", keywords);
              }
 
-             if (pinned.length > 0) {
-               pinnedContainer.innerHTML = pinned.map(function(a){return getAchievementHtml(a);}).join('');
-               pinnedContainer.style.display = 'block';
+             // 2. Score and Filter achievements
+             var finalVis = state.hideUnlocked ? vis.filter(function(a){return !a.unlocked || state.recentUnlocks[a.title];}) : vis;
+             
+             finalVis.forEach(function(a) {
+                a.contextScore = 0;
+                if (keywords.length > 0) {
+                   var text = (a.title + ' ' + a.description).toLowerCase();
+                   if (locationPhrase && text.includes(locationPhrase.toLowerCase())) a.contextScore += 100;
+                   keywords.forEach(k => { if (text.includes(k.toLowerCase())) a.contextScore += 10; });
+                }
+             });
+
+             // 3. Unified Sort Logic
+             // Order: Mastered! > Just Unlocked > Relevant Matches > Challenges > Normal Order
+             var sorted = finalVis.sort((a, b) => {
+                // Mastered! Badge always #1
+                var aMaster = a.title === 'Mastered!'; var bMaster = b.title === 'Mastered!';
+                if (aMaster !== bMaster) return aMaster ? -1 : 1;
+                
+                // Just Unlocked #2
+                var aUnlock = !!state.recentUnlocks[a.title]; var bUnlock = !!state.recentUnlocks[b.title];
+                if (aUnlock !== bUnlock) return aUnlock ? -1 : 1;
+                
+                // Relevant Context #3
+                if (a.contextScore !== b.contextScore) return b.contextScore - a.contextScore;
+                
+                // Challenges #4
+                if (a.is_challenge !== b.is_challenge) return a.is_challenge ? -1 : 1;
+                
+                // Normal sorting (Locked before Unlocked, then original index)
+                if (a.unlocked !== b.unlocked) return a.unlocked ? 1 : -1;
+                return a.originalIndex - b.originalIndex;
+             });
+
+             // 4. Global Mastery Check
+             var allUnlocked = vis.length > 0 && vis.every(function(a){return a.unlocked;});
+             if (allUnlocked && !sorted.find(s => s.title === 'Mastered!')) {
+                sorted.unshift({ title: 'Mastered!', description: 'All achievements earned for this game.', points: 'MASTERED', unlocked: true, BadgeName: null, subset_id: 0, originalIndex: -1 });
+             }
+
+             // 5. Render Unified List
+             var listHtml = '';
+             var subsets = {};
+             
+             // Handle grouping if headers enabled
+             if (state.showHeaders) {
+                 sorted.forEach(function(a) {
+                    // Only group normal items, context/recent items stay at top without headers
+                    if (a.contextScore > 0 || state.recentUnlocks[a.title] || a.title === 'Mastered!') {
+                        listHtml += getAchievementHtml(a, false, a.contextScore > 0);
+                    } else {
+                        var id = a.subset_id || 0; if(!subsets[id]) subsets[id] = { title: a.subset_title || 'Base Set', items: [] };
+                        subsets[id].items.push(a);
+                    }
+                 });
+                 Object.keys(subsets).sort((a,b) => a-b).forEach(id => {
+                    listHtml += '<div class="subset-header"><span>' + subsets[id].title + '</span></div>';
+                    listHtml += subsets[id].items.map(a => getAchievementHtml(a)).join('');
+                 });
              } else {
-               pinnedContainer.innerHTML = '';
-               pinnedContainer.style.display = 'none';
+                 listHtml = sorted.map(a => getAchievementHtml(a, false, a.contextScore > 0)).join('');
              }
-
-             var remaining = finalVis.filter(function(a){return !a.is_challenge && !state.recentUnlocks[a.title];}).sort(function(a,b){return a.originalIndex - b.originalIndex;});
-             var mainHtml = ''; var subsets = {};
-             remaining.filter(function(a){return !a.unlocked;}).forEach(function(a){
-               var id = a.subset_id || 0; if(!subsets[id]) subsets[id] = { title: a.subset_title || 'Base Set', items: [] };
-               subsets[id].items.push(a);
-             });
-             Object.keys(subsets).sort(function(a,b){return a-b;}).forEach(function(id){
-               if (state.showHeaders) mainHtml += '<div class="subset-header"><span>' + subsets[id].title + '</span></div>';
-               mainHtml += subsets[id].items.map(function(a){return getAchievementHtml(a);}).join('');
-             });
-             var unlocked = remaining.filter(function(a){return a.unlocked;});
-             if (!state.hideUnlocked && unlocked.length > 0) {
-               if (state.showHeaders) mainHtml += '<div class="subset-header completed"><span>Completed</span></div>';
-               mainHtml += unlocked.map(function(a){return getAchievementHtml(a);}).join('');
-             }
-             document.getElementById('achievement-list').innerHTML = mainHtml;
+             
+             document.getElementById('achievement-list').innerHTML = listHtml;
              
              var tCnt = vis.length; var uCnt = vis.filter(function(i){return i.unlocked;}).length;
              var per = tCnt > 0 ? Math.round((uCnt / tCnt) * 100) : 0;
@@ -643,7 +714,6 @@ class MainActivity : AppCompatActivity() {
 
           } else { 
              dash.classList.add('hidden'); wrap.classList.add('full-screen');
-             pinnedContainer.innerHTML = ''; pinnedContainer.style.display = 'none';
 
              if (state.view === 'completion') {
                backBtn.style.display = 'block';
@@ -816,40 +886,57 @@ class MainActivity : AppCompatActivity() {
           }
         }
         function renderSettings() {
-          var user = window.localStorage.getItem('ra_user') || '';
-          var key = window.localStorage.getItem('ra_key') || '';
-          var isLoggedIn = (user && key);
-          
-          var credsContainer = document.getElementById('credentials-section');
-          if (isLoggedIn) {
-            credsContainer.innerHTML = '<div style="background: rgba(255, 82, 82, 0.1); padding: 15px; border-radius: 8px; border: 1px solid #FF5252; text-align: center;">' +
-              '<div style="font-size: 14px; font-weight: 800; color: #FFF; margin-bottom: 5px;">Logged in as ' + user + '</div>' +
-              '<button onclick="logout()" style="width: 100%; padding: 8px; background: #FF5252; border: none; border-radius: 4px; color: #000; font-weight: 900; text-transform: uppercase; cursor: pointer;">Logout</button>' +
-              '</div>';
-          } else {
-            credsContainer.innerHTML = '<div class="input-group"><label>RA Username</label><input type="text" id="input-user" value="' + user + '"></div>' +
-              '<div class="input-group"><label>API Key</label><input type="password" id="input-key" value="' + key + '"></div>' +
-              '<button class="btn-save" style="margin-top: 5px;" onclick="saveCredentials()">Save & Refresh</button>';
-          }
+          try {
+              var user = window.localStorage.getItem('ra_user') || '';
+              var key = window.localStorage.getItem('ra_key') || '';
+              var isLoggedIn = (user && key);
+              
+              var credsContainer = document.getElementById('credentials-section');
+              if (isLoggedIn) {
+                credsContainer.innerHTML = '<div style="background: rgba(255, 82, 82, 0.1); padding: 15px; border-radius: 8px; border: 1px solid #FF5252; text-align: center;">' +
+                  '<div style="font-size: 14px; font-weight: 800; color: #FFF; margin-bottom: 5px;">Logged in as ' + user + '</div>' +
+                  '<button onclick="logout()" style="width: 100%; padding: 8px; background: #FF5252; border: none; border-radius: 4px; color: #000; font-weight: 900; text-transform: uppercase; cursor: pointer;">Logout</button>' +
+                  '</div>';
+              } else {
+                credsContainer.innerHTML = '<div class="input-group"><label>RA Username</label><input type="text" id="input-user" value="' + user + '"></div>' +
+                  '<div class="input-group"><label>API Key</label><input type="password" id="input-key" value="' + key + '"></div>' +
+                  '<button class="btn-save" style="margin-top: 5px;" onclick="saveCredentials()">Save & Refresh</button>';
+              }
 
-          var container = document.getElementById('filter-list'); var subsetsMap = {};
-          state.achievements.forEach(function(a){
-            var title = a.subset_title || 'Base Set'; var id = a.subset_id || 0;
-            if (!subsetsMap[id]) subsetsMap[id] = title;
-          });
-          var syncEnabled = window.localStorage.getItem('ra_sync_rp') === 'true';
-          var html = '';
-          if (window.Android && !window.Android.hasUsagePermission()) {
-             html += '<div class="perm-banner" onclick="window.Android.openUsageSettings()">Permission Required: Tap to Grant Usage Access</div>';
+              var container = document.getElementById('filter-list'); var subsetsMap = {};
+              state.achievements.forEach(function(a){
+                var title = a.subset_title || 'Base Set'; var id = a.subset_id || 0;
+                if (!subsetsMap[id]) subsetsMap[id] = title;
+              });
+              var syncEnabled = window.localStorage.getItem('ra_sync_rp') === 'true';
+              var html = '';
+              if (window.Android && !window.Android.hasUsagePermission()) {
+                 html += '<div class="perm-banner" onclick="window.Android.openUsageSettings()">Permission Required: Tap to Grant Usage Access</div>';
+              }
+              
+              if (window.Android) {
+                 var available = false;
+                 var hasPerm = false;
+                 try {
+                     available = window.Android.isShizukuAvailable();
+                     hasPerm = window.Android.hasShizukuPermission();
+                 } catch(e) { console.error("Shizuku check failed", e); }
+                 
+                 html += '<div class="shizuku-banner ' + (available ? (hasPerm ? 'active' : 'waiting') : 'inactive') + '" onclick="window.Android.requestShizukuPermission()">' +
+                         (available ? (hasPerm ? 'Shizuku Service: ACTIVE' : 'Shizuku Detected: Tap to Grant Access') : 'Shizuku: Not Detected (Optional)') + '</div>';
+              }
+
+              html += '<div class="app-row" onclick="toggleSyncRP()"><label><input type="checkbox" ' + (syncEnabled ? 'checked' : '') + ' onclick="event.stopPropagation(); toggleSyncRP()"><span>Sync with Rich Presence (Exp)</span></label></div>';
+              html += '<div class="app-row" onclick="toggleHeaders()"><label><input type="checkbox" ' + (state.showHeaders ? 'checked' : '') + ' onclick="event.stopPropagation(); toggleHeaders()"><span>Show Subset Headers</span></label></div>';
+              html += '<div class="app-row" onclick="toggleHideUnlocked()"><label><input type="checkbox" ' + (state.hideUnlocked ? 'checked' : '') + ' onclick="event.stopPropagation(); toggleHideUnlocked()"><span>Hide Unlocked</span></label></div>';
+              html += '<div class="modal-divider"></div>';
+              Object.keys(subsetsMap).sort(function(a,b){return a-b;}).forEach(function(subId){
+                html += '<div class="app-row" onclick="toggleSubset(' + subId + ')"><label><input type="checkbox" ' + (state.activeSubsets[subId] ? 'checked' : '') + ' onclick="event.stopPropagation(); toggleSubset(' + subId + ')"><span>' + subsetsMap[subId] + '</span></label></div>';
+              });
+              container.innerHTML = html;
+          } catch(err) {
+              console.error("renderSettings error:", err);
           }
-          html += '<div class="app-row" onclick="toggleSyncRP()"><label><input type="checkbox" ' + (syncEnabled ? 'checked' : '') + ' onclick="event.stopPropagation(); toggleSyncRP()"><span>Sync with Rich Presence (Exp)</span></label></div>';
-          html += '<div class="app-row" onclick="toggleHeaders()"><label><input type="checkbox" ' + (state.showHeaders ? 'checked' : '') + ' onclick="event.stopPropagation(); toggleHeaders()"><span>Show Subset Headers</span></label></div>';
-          html += '<div class="app-row" onclick="toggleHideUnlocked()"><label><input type="checkbox" ' + (state.hideUnlocked ? 'checked' : '') + ' onclick="event.stopPropagation(); toggleHideUnlocked()"><span>Hide Unlocked</span></label></div>';
-          html += '<div class="modal-divider"></div>';
-          Object.keys(subsetsMap).sort(function(a,b){return a-b;}).forEach(function(id){
-            html += '<div class="app-row" onclick="toggleSubset(id)"><label><input type="checkbox" ' + (state.activeSubsets[id] ? 'checked' : '') + ' onclick="event.stopPropagation(); toggleSubset(' + id + ')"><span>' + subsetsMap[id] + '</span></label></div>';
-          });
-          container.innerHTML = html;
         }
         function toggleAppTriggerMenu() {
             var menu = document.getElementById('app-trigger-menu');
@@ -882,8 +969,19 @@ class MainActivity : AppCompatActivity() {
           window.localStorage.setItem('ra_key', document.getElementById('input-key').value);
           fetchProfile(); renderSettings();
         }
+        function logout() {
+          if (confirm('Are you sure you want to log out and clear your credentials?')) {
+            window.localStorage.removeItem('ra_user');
+            window.localStorage.removeItem('ra_key');
+            state.profile = null;
+            state.recentGames = [];
+            state.aotw = null;
+            render();
+            renderSettings();
+          }
+        }
         </script></head><body>
-        <div class="settings-btn" onclick="toggleSettings(true)"><svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22L2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg></div>
+        <div class="settings-btn" onclick="toggleSettings(true)"><svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg></div>
         <div id="back-btn" class="back-btn" onclick="goBack()"><svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg></div>
         <div id="modal-overlay" onclick="toggleSettings(false)"><div class="modal" onclick="event.stopPropagation()">
           <div class="modal-title">Settings</div>
@@ -915,7 +1013,6 @@ class MainActivity : AppCompatActivity() {
           <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill"></div></div>
         </div>
         <div class="wrapper">
-            <div id="pinned-achievements"></div>
             <div class="content">
                 <div id="achievement-list"></div>
             </div>

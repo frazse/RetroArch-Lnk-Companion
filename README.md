@@ -8,18 +8,23 @@ A high-performance Android "Passive HUD" companion for RetroArch and standalone 
 - **High-Speed UDP**: Built-in listener (Port `55432`) for seamless integration with `-lnk` forks (RetroArch, Dolphin, PPSSPP).
 - **Universal Rich Presence**: Automatic HUD activation for any standalone emulator (DuckStation, AetherSX2, etc.) by syncing with RetroAchievements Rich Presence.
 
-### 2. Privileged "Rootless" Telemetry
-Ported from performance tools to provide deep system stats without traditional root:
-- **Global FPS & Frametime**: High-precision calculation using `dumpsys SurfaceFlinger` with native Kotlin parsing for maximum performance.
-- **Power Monitoring**: Real-time power draw display in **Watts (W)**.
-- **System Load**: Per-core CPU utilization, GPU load, and temperatures.
+### 2. Shizuku-Powered Privileged Telemetry
+Integrates with the **Shizuku** service to provide high-precision system stats without root or bridge scripts:
+- **Zero-Setup Stats**: Get real-time **FPS**, **Power (Watts)**, and **GPU/CPU Temperatures** just by authorizing Shizuku in the app settings.
+- **Rootless Performance**: Accesses `dumpsys` and system files via Shizuku's secure shell context for desktop-class telemetry accuracy.
 
-### 3. Battery-First Architecture
+### 3. Smart Contextual Achievement Sorting
+Uses **Rich Presence** data to intelligently re-order your achievement list:
+- **📍 Relevant Now**: Achievements that mention your current location (e.g., "Plains of Rohan") automatically jump to the very top of the HUD.
+- **Exclusive Matching**: Smart engine extracts full location phrases and filters out "noise" (difficulty levels, character names) for 100% accuracy.
+- **Menu Detection**: Automatically reverts to standard sorting when you enter a game's menu.
+
+### 4. Battery-First Architecture
 - **Deep Sleep Mode**: The entire telemetry engine (scripts, file reads, socket processing) completely shuts down when no game is active.
-- **Adaptive Throttling**: The background app watcher slows down when idle to minimize CPU wake-ups.
-- **UDP Priority Lock**: High-speed UDP streams automatically suppress slow periodic polling for 10 seconds to eliminate jitter.
+- **Adaptive Throttling**: Background watchers slow down when idle to minimize CPU wake-ups.
+- **Hybrid Detection**: Uses a mix of Usage Stats and Shizuku for the most efficient foreground app monitoring.
 
-### 4. RetroAchievements Integration
+### 5. RetroAchievements Integration
 - **Career Dashboard**: Real-time display of Points, Rank, and Award counts (Beaten/Mastered) synced directly with your profile.
 - **User Completion Progress**: Detailed history view of all played games with progress bars, filtering by system, and advanced sorting.
 - **Mastery Experience**: 
@@ -27,18 +32,17 @@ Ported from performance tools to provide deep system stats without traditional r
     - **Premium Styling**: Mastered games in your history feature a golden border, gradient background, and glow to match the site's prestige.
 - **Achievement of the Week**: Real-time countdown ("Ends in X days") and unlock status (✅ indicator) synced with global AOTW.
 
-### 5. True "Passive" HUD & Stability
+### 6. True "Passive" HUD & Stability
 - **Passive Mode**: Prevents the window from stealing focus or intercepting controller input.
 - **Surgical UI Updates**: Optimized rendering engine ensures stats update in real-time without flickering or closing open dropdowns.
-- **Logout & Privacy**: Secure Logout in settings with a confirmation prompt to clear all local credentials.
-- **Remote Debugging**: WebView debugging enabled for Debug builds via `chrome://inspect`.
+- **Scrollable HUD**: A unified list that supports vertical scrolling for large achievement sets while keeping the telemetry grid anchored.
 
 ## Setup & Usage
 
 1. **Install**: Build and deploy the APK to your Android device (Odin 2, RP4Pro, etc.).
-2. **Usage Access**: Open Settings in the app and tap the red banner to grant "Usage Access" (required for automatic HUD activation).
-3. **Trigger Apps**: Select your emulators in the "Trigger Apps" dropdown.
-4. **RetroArch**: Configure your RetroArch Lnk setup to send UDP packets to the device IP on port `55432`.
+2. **Shizuku (Recommended)**: For the best experience, install and start the **Shizuku** app. Open Companion Settings and tap "Authorize Shizuku" for precise FPS/Power stats.
+3. **Usage Access**: Open Settings in the app and tap the banner to grant "Usage Access" (required for automatic HUD activation).
+4. **Trigger Apps**: Select your emulators in the "Trigger Apps" dropdown.
 
 ## JSON Schema (UDP)
 The app expects UDP packets in the following format:

@@ -19,7 +19,10 @@ data class TelemetrySnapshot(
     val frametime: Double? = null
 )
 
-class TelemetryReader(private val context: Context) {
+class TelemetryReader(
+    private val context: Context,
+    private val shizukuSupport: ShizukuSupport? = null
+) {
     private val reader = DefaultPrivilegedSysfsReader()
     private val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
     
@@ -40,10 +43,30 @@ class TelemetryReader(private val context: Context) {
         return try {
             val f = File(path)
             if (f.exists() && f.canRead()) f.readText().trim()
-            else if (privileged) reader.readText(path)
+            else if (privileged) {
+                if (shizukuSupport?.isShizukuAvailable() == true && shizukuSupport.hasPermission()) {
+                    shizukuSupport.runShell("cat $path").trim().takeIf { it.isNotBlank() }
+                } else {
+                    reader.readText(path)
+                }
+            }
             else null
         } catch (e: Exception) {
-            if (privileged) reader.readText(path) else null
+            if (privileged) {
+                if (shizukuSupport?.isShizukuAvailable() == true && shizukuSupport.hasPermission()) {
+                    shizukuSupport.runShell("cat $path").trim().takeIf { it.isNotBlank() }
+                } else {
+                    reader.readText(path)
+                }
+            } else null
+        }
+    }
+
+    private fun runPrivileged(command: String): String? {
+        return if (shizukuSupport?.isShizukuAvailable() == true && shizukuSupport.hasPermission()) {
+            shizukuSupport.runShell(command).takeIf { it.isNotBlank() }
+        } else {
+            RootSupport.runRootCommand(command)
         }
     }
 
@@ -108,9 +131,9 @@ class TelemetryReader(private val context: Context) {
         val lines = try {
             val f = File("/proc/stat")
             if (f.exists() && f.canRead()) f.readLines()
-            else reader.readText("/proc/stat")?.lines() ?: emptyList()
+            else (safeRead("/proc/stat", true))?.lines() ?: emptyList()
         } catch (e: Exception) {
-            reader.readText("/proc/stat")?.lines() ?: emptyList()
+            (safeRead("/proc/stat", true))?.lines() ?: emptyList()
         }
 
         val currentStats = mutableMapOf<Int, Pair<Long, Long>>()
@@ -173,9 +196,8 @@ class TelemetryReader(private val context: Context) {
 
     private fun pollFps(): Pair<Int?, Double?> {
         if (!timeStatsEnabled) {
-            val enableRes = RootSupport.runRootCommand("dumpsys SurfaceFlinger --timestats -enable")
-            val clearRes = RootSupport.runRootCommand("dumpsys SurfaceFlinger --timestats -clear")
-            Log.d("TelemetryFps", "enable=$enableRes clear=$clearRes")
+            runPrivileged("dumpsys SurfaceFlinger --timestats -enable")
+            runPrivileged("dumpsys SurfaceFlinger --timestats -clear")
             timeStatsEnabled = true
         }
 
@@ -183,8 +205,8 @@ class TelemetryReader(private val context: Context) {
         if (now - lastFpsPoll < 800) return Pair(null, null)
         lastFpsPoll = now
 
-        val out = RootSupport.runRootCommand("dumpsys SurfaceFlinger --timestats -dump -maxlayers 16")
-        RootSupport.runRootCommand("dumpsys SurfaceFlinger --timestats -clear")
+        val out = runPrivileged("dumpsys SurfaceFlinger --timestats -dump -maxlayers 16")
+        runPrivileged("dumpsys SurfaceFlinger --timestats -clear")
         if (out == null) {
             return Pair(null, null)
         }

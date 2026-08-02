@@ -13,32 +13,54 @@ class ForegroundAppWatcher(
     private var running = true
     private val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
     private var lastState: Boolean = false
+    private var shizukuSupport: ShizukuSupport? = null
+
+    fun getShizukuSupport(): ShizukuSupport? = shizukuSupport
 
     fun start() {
+        shizukuSupport = ShizukuSupport(context, {
+            // State changed (detected or permission granted)
+            onChange(lastState) // Trigger a UI refresh via the existing callback
+        }) { packageName ->
+            checkTrackedPackage(packageName)
+        }
+        shizukuSupport?.init()
+
         Thread {
             Log.d("AppWatcher", "Watcher thread started")
             while (running) {
+                // Perform foreground check using reliable UsageStats.
+                // We always do this for now to ensure the HUD trigger (Rich Presence) works perfectly,
+                // while Shizuku is used for the heavy telemetry work.
                 if (hasUsageStatsPermission()) {
                     checkForeground()
-                } else {
-                    if (lastState) {
-                        Log.d("AppWatcher", "Permission lost, disabling HUD")
-                        onChange(false)
-                        lastState = false
-                    }
+                } else if (lastState) {
+                    Log.d("AppWatcher", "Permission lost, disabling HUD")
+                    onChange(false)
+                    lastState = false
                 }
                 
-                // PERFORMANCE OPTIMIZATION:
-                // If HUD is inactive, we poll much slower (3s) to save battery.
-                // If HUD is active, we poll at 1.5s to ensure quick cleanup.
+                // Adaptive Sleep: 1.5s when active, 3s when idle.
                 val sleepTime = if (lastState) 1500L else 3000L
                 Thread.sleep(sleepTime)
             }
         }.start()
     }
 
+    private fun checkTrackedPackage(packageName: String?) {
+        val tracked = getTrackedPackages()
+        val isActive = tracked.contains(packageName)
+        Log.d("AppWatcher", "Checking package: $packageName | Tracked: ${tracked.joinToString(",")} | Active: $isActive")
+        if (isActive != lastState) {
+            Log.d("AppWatcher", "Local App State changed: $isActive (Current Top: $packageName)")
+            onChange(isActive)
+            lastState = isActive
+        }
+    }
+
     fun stop() {
         running = false
+        shizukuSupport?.stop()
     }
 
     fun hasUsageStatsPermission(): Boolean {
@@ -64,14 +86,6 @@ class ForegroundAppWatcher(
         if (stats == null || stats.isEmpty()) return
 
         val currentTop = stats.maxByOrNull { it.lastTimeUsed }?.packageName ?: return
-        
-        val tracked = getTrackedPackages()
-        val isActive = tracked.contains(currentTop)
-
-        if (isActive != lastState) {
-            Log.d("AppWatcher", "Local App State changed: $isActive (Current Top: $currentTop)")
-            onChange(isActive)
-            lastState = isActive
-        }
+        checkTrackedPackage(currentTop)
     }
 }

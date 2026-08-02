@@ -9,8 +9,11 @@ activityCompose = "1.8.0"
 appcompat = "1.7.1"
 kotlin = "2.2.10"
 composeBom = "2026.02.01"
+shizuku = "13.1.0"
 
 [libraries]
+rikka-shizuku-api = { group = "dev.rikka.shizuku", name = "api", version.ref = "shizuku" }
+rikka-shizuku-provider = { group = "dev.rikka.shizuku", name = "provider", version.ref = "shizuku" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
